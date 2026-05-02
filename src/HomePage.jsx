@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ShoppingCart, Search, User, Heart, Star, Menu, X,
   MapPin, Phone, Mail, ChevronLeft, ChevronDown, Package, Shield,
@@ -374,9 +375,9 @@ export default function HomePage() {
                 </span>
               )}
             </button>
-            <button className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label="الحساب">
+            <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label="الحساب">
               <User size={21} className="text-blue-900" />
-            </button>
+            </Link>
             <button
               className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors sm:hidden"
               onClick={() => setMenuOpen(!menuOpen)}
@@ -515,9 +516,9 @@ export default function HomePage() {
                   تسوّق الآن
                   <ChevronLeft size={17} />
                 </button>
-                <button className="bg-white/10 hover:bg-white/[0.18] border border-white/20 text-white font-semibold px-8 py-3.5 rounded-2xl transition-all duration-200">
+                <Link to="/login" className="bg-white/10 hover:bg-white/[0.18] border border-white/20 text-white font-semibold px-8 py-3.5 rounded-2xl transition-all duration-200">
                   انضم كأسرة منتجة
-                </button>
+                </Link>
               </div>
               <div className="flex flex-wrap gap-10 mt-11 pt-8 border-t border-white/10">
                 {[
@@ -710,9 +711,9 @@ export default function HomePage() {
             انضمي إلى أكثر من 500 أسرة تبيع منتجاتها عبر أسرنا وابدئي رحلة نجاحك اليوم.
             التسجيل مجاني ولا يستغرق سوى دقيقتين.
           </p>
-          <button className="bg-white text-blue-900 font-extrabold px-10 py-4 rounded-2xl hover:scale-[1.03] active:scale-[0.97] transition-all shadow-2xl text-base">
+          <Link to="/login" className="inline-block bg-white text-blue-900 font-extrabold px-10 py-4 rounded-2xl hover:scale-[1.03] active:scale-[0.97] transition-all shadow-2xl text-base">
             سجّلي أسرتك مجاناً ←
-          </button>
+          </Link>
         </div>
       </section>
 
@@ -761,7 +762,11 @@ export default function HomePage() {
               <ul className="space-y-3">
                 {['سجّل أسرتك', 'لوحة التحكم', 'الشروط والأحكام', 'الدعم الفني', 'الأسئلة الشائعة'].map((link) => (
                   <li key={link}>
-                    <a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a>
+                    {link === 'سجّل أسرتك' ? (
+                      <Link to="/login" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</Link>
+                    ) : (
+                      <a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a>
+                    )}
                   </li>
                 ))}
               </ul>
