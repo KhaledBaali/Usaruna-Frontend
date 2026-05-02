@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from './supabase';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import HomePage from './HomePage';
+import ProductDetailsPage from './ProductDetailsPage';
 
 const Cart = () => (
   <div className="p-10 text-2xl font-bold text-center mt-20" dir="rtl">
@@ -58,9 +59,10 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/"      element={<HomePage />} />
-        <Route path="/cart"  element={<Cart />}     />
-        <Route path="/login" element={<Login />}    />
+        <Route path="/"            element={<HomePage />}           />
+        <Route path="/product/:id" element={<ProductDetailsPage />} />
+        <Route path="/cart"        element={<Cart />}               />
+        <Route path="/login"       element={<Login />}              />
       </Routes>
     </Router>
   );

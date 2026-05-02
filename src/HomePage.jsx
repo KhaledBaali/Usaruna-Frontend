@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, Search, User, Heart, Star, Menu, X,
   MapPin, Phone, Mail, ChevronLeft, ChevronDown, Package, Shield,
   Truck, Award, Globe, Share2, AtSign, Clock,
 } from 'lucide-react';
+import { PRODUCTS } from './products';
 
 // ─── STATIC DATA ──────────────────────────────────────────────────────────────
 
@@ -22,143 +24,6 @@ const CATEGORIES = [
   { id: 6, name: 'مشغولات يدوية',   emoji: '🧶',  special: false },
 ];
 
-/**
- * Schema fields:
- *   sellerCity   — city where the seller operates
- *   isPerishable — true  → local delivery only (must match currentCity)
- *                  false → ships nationwide regardless of city
- *   deliveryType — 'local' | 'nationwide'
- */
-const PRODUCTS = [
-  // ── Perishable · local delivery only ─────────────────────────────────────
-  {
-    id: 1,
-    name: 'ورق عنب بالزيت والليمون',
-    family: 'أسرة الزهراني',
-    sellerCity: 'الرياض',
-    price: 45,
-    originalPrice: null,
-    rating: 4.8,
-    reviews: 127,
-    badge: 'الأكثر مبيعاً',
-    badgeColor: 'bg-amber-500',
-    emoji: '🍇',
-    gradient: 'from-green-200 to-emerald-100',
-    isPerishable: true,
-    deliveryType: 'local',
-  },
-  {
-    id: 2,
-    name: 'كيكة الليمون بالقشطة الطازجة',
-    family: 'أسرة الغامدي',
-    sellerCity: 'جدة',
-    price: 85,
-    originalPrice: null,
-    rating: 4.9,
-    reviews: 203,
-    badge: 'جديد',
-    badgeColor: 'bg-blue-500',
-    emoji: '🍋',
-    gradient: 'from-yellow-200 to-amber-100',
-    isPerishable: true,
-    deliveryType: 'local',
-  },
-  {
-    id: 7,
-    name: 'مكرونة بالدجاج المنزلية الطازجة',
-    family: 'أسرة السلمي',
-    sellerCity: 'جدة',
-    price: 55,
-    originalPrice: null,
-    rating: 4.8,
-    reviews: 94,
-    badge: 'طازج يومياً',
-    badgeColor: 'bg-emerald-500',
-    emoji: '🍝',
-    gradient: 'from-red-100 to-orange-50',
-    isPerishable: true,
-    deliveryType: 'local',
-  },
-  {
-    id: 8,
-    name: 'صمون منزلي بالسمسم والزعتر',
-    family: 'أسرة الحربي',
-    sellerCity: 'الرياض',
-    price: 28,
-    originalPrice: null,
-    rating: 4.7,
-    reviews: 143,
-    badge: 'طازج اليوم',
-    badgeColor: 'bg-amber-500',
-    emoji: '🫓',
-    gradient: 'from-amber-100 to-yellow-50',
-    isPerishable: true,
-    deliveryType: 'local',
-  },
-  // ── Non-Perishable · ships nationwide ─────────────────────────────────────
-  {
-    id: 3,
-    name: 'بهارات القصيم الأصيلة',
-    family: 'أسرة العنزي',
-    sellerCity: 'بريدة',
-    price: 30,
-    originalPrice: 38,
-    rating: 4.7,
-    reviews: 89,
-    badge: 'خصم 21%',
-    badgeColor: 'bg-red-500',
-    emoji: '🌶️',
-    gradient: 'from-orange-200 to-red-100',
-    isPerishable: false,
-    deliveryType: 'nationwide',
-  },
-  {
-    id: 4,
-    name: 'عسل السدر الجبلي الطبيعي',
-    family: 'أسرة القحطاني',
-    sellerCity: 'الباحة',
-    price: 180,
-    originalPrice: null,
-    rating: 5.0,
-    reviews: 341,
-    badge: 'مميز',
-    badgeColor: 'bg-emerald-600',
-    emoji: '🍯',
-    gradient: 'from-amber-200 to-yellow-100',
-    isPerishable: false,
-    deliveryType: 'nationwide',
-  },
-  {
-    id: 5,
-    name: 'حلوى التمر بالمكسرات الفاخرة',
-    family: 'أسرة الدوسري',
-    sellerCity: 'الأحساء',
-    price: 60,
-    originalPrice: null,
-    rating: 4.6,
-    reviews: 156,
-    badge: null,
-    emoji: '🌴',
-    gradient: 'from-stone-200 to-amber-100',
-    isPerishable: false,
-    deliveryType: 'nationwide',
-  },
-  {
-    id: 6,
-    name: 'مربى التين البلدي المنزلية',
-    family: 'أسرة الشمري',
-    sellerCity: 'حائل',
-    price: 35,
-    originalPrice: null,
-    rating: 4.5,
-    reviews: 78,
-    badge: null,
-    emoji: '🫐',
-    gradient: 'from-purple-200 to-violet-100',
-    isPerishable: false,
-    deliveryType: 'nationwide',
-  },
-];
 
 const TRUST_FEATURES = [
   { Icon: Truck,   title: 'توصيل سريع',  desc: 'الأطباق الطازجة خلال 1-2 ساعة' },
@@ -211,6 +76,7 @@ function DeliveryTag({ isPerishable }) {
 function ProductCard({ product, onAddToCart }) {
   const [liked, setLiked] = useState(false);
   const [added, setAdded] = useState(false);
+  const navigate = useNavigate();
 
   const handleAdd = () => {
     onAddToCart(product);
@@ -218,10 +84,15 @@ function ProductCard({ product, onAddToCart }) {
     setTimeout(() => setAdded(false), 1600);
   };
 
+  const goToProduct = () => navigate(`/product/${product.id}`);
+
   return (
     <div className="bg-white rounded-3xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col">
       {/* Image area */}
-      <div className={`relative bg-gradient-to-br ${product.gradient} h-44 sm:h-48 flex items-center justify-center flex-shrink-0`}>
+      <div
+        onClick={goToProduct}
+        className={`relative bg-gradient-to-br ${product.gradient} h-44 sm:h-48 flex items-center justify-center flex-shrink-0 cursor-pointer`}
+      >
         <span className="text-6xl select-none drop-shadow-sm group-hover:scale-110 transition-transform duration-300">
           {product.emoji}
         </span>
@@ -231,7 +102,7 @@ function ProductCard({ product, onAddToCart }) {
           </span>
         )}
         <button
-          onClick={() => setLiked(!liked)}
+          onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
           className="absolute top-3.5 left-3.5 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform"
           aria-label="إضافة للمفضلة"
         >
@@ -241,7 +112,10 @@ function ProductCard({ product, onAddToCart }) {
 
       {/* Body */}
       <div className="p-5 flex flex-col flex-1 gap-2.5">
-        <h3 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2">
+        <h3
+          onClick={goToProduct}
+          className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 cursor-pointer hover:text-blue-700 transition-colors"
+        >
           {product.name}
         </h3>
 
