@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import logo from './assets/logo.png';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   User, Mail, Phone, Lock, Eye, EyeOff, Shield,
@@ -16,10 +17,8 @@ function BrandPanel() {
       <div className="absolute top-1/2 left-1/4 w-52 h-52 bg-emerald-400 rounded-full opacity-[0.07] blur-2xl pointer-events-none" />
 
       <Link to="/" className="flex items-center gap-3 w-fit relative z-10">
-        <div className="w-11 h-11 bg-gradient-to-br from-blue-400 to-emerald-400 rounded-2xl flex items-center justify-center shadow-lg">
-          <span className="text-white font-extrabold text-xl leading-none">أ</span>
-        </div>
-        <span className="text-2xl font-extrabold text-white tracking-tight">أسرنا</span>
+        <img src={logo} alt="اسرنا" className="w-11 h-11 object-contain" />
+        <span className="text-2xl font-extrabold text-white tracking-tight font-brand">اسرنا</span>
       </Link>
 
       <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
@@ -31,7 +30,7 @@ function BrandPanel() {
         <h1 className="text-3xl xl:text-4xl font-extrabold text-white leading-[1.2] mb-5">
           انضم لمجتمع
           <br />
-          <span className="text-emerald-400">أسرنا اليوم</span>
+          <span className="text-emerald-400">اسرنا اليوم</span>
         </h1>
 
         <p className="text-blue-200 text-base leading-relaxed mb-10 max-w-sm">
@@ -158,10 +157,8 @@ export default function UserRegisterPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 py-4 sm:px-8">
           <Link to="/" className="flex items-center gap-2.5 lg:hidden">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-900 to-emerald-500 rounded-2xl flex items-center justify-center shadow-sm">
-              <span className="text-white font-extrabold text-lg leading-none">أ</span>
-            </div>
-            <span className="text-xl font-extrabold text-blue-900 tracking-tight">أسرنا</span>
+            <img src={logo} alt="اسرنا" className="w-9 h-9 object-contain" />
+            <span className="text-xl font-extrabold text-blue-900 tracking-tight font-brand">اسرنا</span>
           </Link>
           <div className="hidden lg:block" />
           <Link
@@ -187,7 +184,7 @@ export default function UserRegisterPage() {
                 <p className="text-gray-500 text-sm leading-relaxed">
                   {success
                     ? 'تحقق من بريدك الإلكتروني لتفعيل الحساب'
-                    : 'سجّل كمتسوق وابدأ اكتشاف منتجات أسرنا'
+                    : 'سجّل كمتسوق وابدأ اكتشاف منتجات اسرنا'
                   }
                 </p>
               </div>

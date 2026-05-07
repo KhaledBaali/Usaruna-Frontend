@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import logo from './assets/logo.png';
 import { Link } from 'react-router-dom';
 import {
   Mail, Phone, Lock, Eye, EyeOff, Shield,
@@ -20,7 +21,7 @@ const T = {
     stat2v: '+8,000',  stat2l: 'منتج متاح',
     stat3v: '+15,000', stat3l: 'عميل سعيد',
     welcome: 'مرحباً بعودتك 👋',
-    subtitle: 'سجّل دخولك للوصول إلى حسابك في أسرنا',
+    subtitle: 'سجّل دخولك للوصول إلى حسابك في اسرنا',
     successTitle: 'تم تسجيل الدخول ✓',
     successSubtitle: 'يتم توجيهك إلى صفحتك الشخصية...',
     successMsg: 'تم تسجيل الدخول بنجاح!',
@@ -31,7 +32,7 @@ const T = {
     tabOtp: 'رمز SMS',
     labelEmail: 'البريد الإلكتروني أو رقم الجوال',
     labelPhone: 'رقم الجوال',
-    phEmail: 'example@email.com أو 05xxxxxxxx',
+    phEmail: 'example@email.com / 05xxxxxxxx',
     phPhone: '5xxxxxxxx',
     labelPassword: 'كلمة المرور',
     forgot: 'نسيت كلمة المرور؟',
@@ -118,17 +119,14 @@ const T = {
 
 function BrandPanel({ t }) {
   return (
-    // Always RTL internally — brand content is Arabic-first regardless of UI lang
-    <div dir="rtl" className="hidden lg:flex lg:w-[44%] xl:w-[42%] bg-gradient-to-bl from-blue-950 via-blue-900 to-blue-800 relative overflow-hidden flex-col p-12 xl:p-16">
+    <div dir={t.dir} className="hidden lg:flex lg:w-[44%] xl:w-[42%] bg-gradient-to-bl from-blue-950 via-blue-900 to-blue-800 relative overflow-hidden flex-col p-12 xl:p-16">
       <div className="absolute -top-24 -left-24 w-80 h-80 bg-emerald-500 rounded-full opacity-10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 -right-20 w-96 h-96 bg-blue-400 rounded-full opacity-[0.15] blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 left-1/4 w-52 h-52 bg-emerald-400 rounded-full opacity-[0.07] blur-2xl pointer-events-none" />
 
       <Link to="/" className="flex items-center gap-3 w-fit relative z-10">
-        <div className="w-11 h-11 bg-gradient-to-br from-blue-400 to-emerald-400 rounded-2xl flex items-center justify-center shadow-lg">
-          <span className="text-white font-extrabold text-xl leading-none">أ</span>
-        </div>
-        <span className="text-2xl font-extrabold text-white tracking-tight">أسرنا</span>
+        <img src={logo} alt="اسرنا" className="w-15 h-10 object-contain" />
+        <span className="text-3xl font-extrabold text-white tracking-tight font-brand">اسرنا</span>
       </Link>
 
       <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
@@ -147,23 +145,8 @@ function BrandPanel({ t }) {
 
         <div className="relative w-64 h-64 xl:w-72 xl:h-72">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/30 to-blue-500/30 rounded-full blur-2xl" />
-          <div className="absolute inset-5 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20 shadow-inner">
-            <div className="grid grid-cols-2 gap-3 p-4">
-              {[
-                { emoji: '🍯', bg: 'bg-amber-50',  label: 'عسل طبيعي'  },
-                { emoji: '🧆', bg: 'bg-orange-50', label: 'أكلات شعبية' },
-                { emoji: '🧶', bg: 'bg-blue-50',   label: 'مشغولات'     },
-                { emoji: '🌿', bg: 'bg-green-50',  label: 'أعشاب'       },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className={`${item.bg} rounded-2xl p-3.5 flex flex-col items-center gap-1.5 shadow-sm hover:scale-105 transition-transform duration-200 cursor-default`}
-                >
-                  <span className="text-3xl">{item.emoji}</span>
-                  <span className="text-[10px] font-bold text-gray-700 whitespace-nowrap">{item.label}</span>
-                </div>
-              ))}
-            </div>
+          <div className="absolute inset-0 rounded-full flex items-center justify-center">
+            <img src={logo} alt="اسرنا" className="w-50 h-50 xl:w-50 xl:h-50 object-contain drop-shadow-lg" />
           </div>
         </div>
       </div>
@@ -301,10 +284,8 @@ export default function LoginPage() {
         <div className="flex items-center justify-between px-5 py-4 sm:px-8">
           {/* Mobile logo */}
           <Link to="/" className="flex items-center gap-2.5 lg:hidden">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-900 to-emerald-500 rounded-2xl flex items-center justify-center shadow-sm">
-              <span className="text-white font-extrabold text-lg leading-none">أ</span>
-            </div>
-            <span className="text-xl font-extrabold text-blue-900 tracking-tight">أسرنا</span>
+            <img src={logo} alt="اسرنا" className="w-9 h-9 object-contain" />
+            <span className="text-xl font-extrabold text-blue-900 tracking-tight font-brand">اسرنا</span>
           </Link>
           <div className="hidden lg:block" />
 

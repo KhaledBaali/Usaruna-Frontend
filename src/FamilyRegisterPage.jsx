@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import logo from './assets/logo.png';
 import { Link } from 'react-router-dom';
 import {
   User, Users, Mail, Phone, Lock, Eye, EyeOff,
@@ -36,10 +37,8 @@ function BrandPanel() {
       <div className="absolute top-1/3 left-1/3 w-52 h-52 bg-emerald-300 rounded-full opacity-[0.08] blur-2xl pointer-events-none" />
 
       <Link to="/" className="flex items-center gap-3 w-fit relative z-10">
-        <div className="w-11 h-11 bg-gradient-to-br from-emerald-400 to-blue-400 rounded-2xl flex items-center justify-center shadow-lg">
-          <span className="text-white font-extrabold text-xl leading-none">أ</span>
-        </div>
-        <span className="text-2xl font-extrabold text-white tracking-tight">أسرنا</span>
+        <img src={logo} alt="اسرنا" className="w-11 h-11 object-contain" />
+        <span className="text-2xl font-extrabold text-white tracking-tight font-brand">اسرنا</span>
       </Link>
 
       <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
@@ -65,7 +64,7 @@ function BrandPanel() {
             { emoji: '📦', text: 'بيع منتجاتك لجميع مدن المملكة' },
             { emoji: '💰', text: 'استلام أرباحك بشكل آمن وسريع' },
             { emoji: '📊', text: 'لوحة تحكم سهلة لإدارة طلباتك' },
-            { emoji: '🤝', text: 'دعم كامل من فريق أسرنا' },
+            { emoji: '🤝', text: 'دعم كامل من فريق اسرنا' },
           ].map((f) => (
             <div key={f.text} className="flex items-center gap-3">
               <span className="text-lg">{f.emoji}</span>
@@ -209,10 +208,8 @@ export default function FamilyRegisterPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between px-5 py-4 sm:px-8">
           <Link to="/" className="flex items-center gap-2.5 lg:hidden">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-900 to-emerald-500 rounded-2xl flex items-center justify-center shadow-sm">
-              <span className="text-white font-extrabold text-lg leading-none">أ</span>
-            </div>
-            <span className="text-xl font-extrabold text-blue-900 tracking-tight">أسرنا</span>
+            <img src={logo} alt="اسرنا" className="w-9 h-9 object-contain" />
+            <span className="text-xl font-extrabold text-blue-900 tracking-tight font-brand">اسرنا</span>
           </Link>
           <div className="hidden lg:block" />
           <Link
@@ -276,7 +273,7 @@ export default function FamilyRegisterPage() {
                     <p className="text-emerald-700 font-bold text-lg mb-1">تم التسجيل بنجاح!</p>
                     <p className="text-gray-500 text-sm leading-relaxed max-w-xs">
                       أرسلنا بريد تأكيد إلى <span className="font-bold text-blue-700">{form.email}</span>
-                      . سيتواصل فريق أسرنا معك خلال 24 ساعة.
+                      . سيتواصل فريق اسرنا معك خلال 24 ساعة.
                     </p>
                   </div>
                   <Link
