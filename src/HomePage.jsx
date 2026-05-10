@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PRODUCTS } from './products';
 import { useLang } from './contexts/LanguageContext';
+import { useCart } from './contexts/CartContext';
 import { fetchProducts } from './lib/api';
 import logo from './assets/logo.png';
 
@@ -169,8 +170,8 @@ function GroupHeader({ icon: Icon, title, subtitle, color }) {
 
 export default function HomePage() {
   const { lang, dir, toggle, t } = useLang();
+  const { addItem, totalCount } = useCart();
 
-  const [cartCount,      setCartCount]      = useState(0);
   const [searchQuery,    setSearchQuery]    = useState('');
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [activeCategory, setActiveCategory] = useState(0);
@@ -186,7 +187,7 @@ export default function HomePage() {
   const currentCity     = CITIES.find((c) => c.ar === currentCityAr) ?? { ar: currentCityAr, en: currentCityAr };
   const currentCityDisplay = lang === 'ar' ? currentCity.ar : currentCity.en;
 
-  const handleAddToCart = () => setCartCount((c) => c + 1);
+  const handleAddToCart = (product) => addItem(product);
 
   const { perishableInCity, nationwideProducts } = useMemo(() => ({
     perishableInCity:   products.filter((p) =>  p.isPerishable && p.sellerCity === currentCityAr),
@@ -257,14 +258,14 @@ export default function HomePage() {
               {t('nav_langToggle')}
             </button>
 
-            <button className="relative p-2.5 rounded-2xl hover:bg-gray-100 transition-colors" aria-label={t('nav_cart')}>
+            <Link to="/cart" className="relative p-2.5 rounded-2xl hover:bg-gray-100 transition-colors" aria-label={t('nav_cart')}>
               <ShoppingCart size={21} className="text-blue-900" />
-              {cartCount > 0 && (
+              {totalCount > 0 && (
                 <span className="absolute -top-0.5 -left-0.5 bg-emerald-500 text-white text-[10px] font-extrabold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                  {cartCount}
+                  {totalCount}
                 </span>
               )}
-            </button>
+            </Link>
             <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
               <User size={21} className="text-blue-900" />
             </Link>
