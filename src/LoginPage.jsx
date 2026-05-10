@@ -13,6 +13,7 @@ import { supabase } from './supabase';
 const T = {
   ar: {
     dir: 'rtl',
+    brandName: 'اسرنا',
     badge: 'منصة الأسر المنتجة السعودية',
     heroTitle1: 'تسوّق بثقة من',
     heroTitle2: 'أسر سعودية أصيلة',
@@ -64,6 +65,7 @@ const T = {
   },
   en: {
     dir: 'ltr',
+    brandName: 'Usaruna',
     badge: 'Saudi Family Business Platform',
     heroTitle1: 'Shop with confidence from',
     heroTitle2: 'authentic Saudi families',
@@ -125,8 +127,8 @@ function BrandPanel({ t }) {
       <div className="absolute top-1/2 left-1/4 w-52 h-52 bg-emerald-400 rounded-full opacity-[0.07] blur-2xl pointer-events-none" />
 
       <Link to="/" className="flex items-center gap-3 w-fit relative z-10">
-        <img src={logo} alt="اسرنا" className="w-15 h-10 object-contain" />
-        <span className="text-3xl font-extrabold text-white tracking-tight font-brand">اسرنا</span>
+        <img src={logo} alt={t.brandName} className="w-15 h-10 object-contain" />
+        <span className="text-3xl font-extrabold text-white tracking-tight font-brand">{t.brandName}</span>
       </Link>
 
       <div className="relative z-10 flex-1 flex flex-col justify-center py-10">
@@ -146,7 +148,7 @@ function BrandPanel({ t }) {
         <div className="relative w-64 h-64 xl:w-72 xl:h-72">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/30 to-blue-500/30 rounded-full blur-2xl" />
           <div className="absolute inset-0 rounded-full flex items-center justify-center">
-            <img src={logo} alt="اسرنا" className="w-50 h-50 xl:w-50 xl:h-50 object-contain drop-shadow-lg" />
+            <img src={logo} alt={t.brandName} className="w-50 h-50 xl:w-50 xl:h-50 object-contain drop-shadow-lg" />
           </div>
         </div>
       </div>
@@ -284,8 +286,8 @@ export default function LoginPage() {
         <div className="flex items-center justify-between px-5 py-4 sm:px-8">
           {/* Mobile logo */}
           <Link to="/" className="flex items-center gap-2.5 lg:hidden">
-            <img src={logo} alt="اسرنا" className="w-9 h-9 object-contain" />
-            <span className="text-xl font-extrabold text-blue-900 tracking-tight font-brand">اسرنا</span>
+            <img src={logo} alt={t.brandName} className="w-9 h-9 object-contain" />
+            <span className="text-xl font-extrabold text-blue-900 tracking-tight font-brand">{t.brandName}</span>
           </Link>
           <div className="hidden lg:block" />
 
