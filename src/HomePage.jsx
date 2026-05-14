@@ -10,17 +10,13 @@ import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
 import { fetchProducts } from './lib/api';
+import { supabase } from './supabase';
 import logo from './assets/logo.png';
 
-// ─── CITIES ───────────────────────────────────────────────────────────────────
-
-const CITIES = [
-  { ar: 'الرياض',          en: 'Riyadh' },
-  { ar: 'جدة',             en: 'Jeddah' },
-  { ar: 'مكة المكرمة',     en: 'Mecca'  },
-  { ar: 'المدينة المنورة', en: 'Medina' },
-  { ar: 'ينبع',            en: 'Yanbu'  },
-];
+// ─── CATEGORY DISPLAY MAPS ────────────────────────────────────────────────────
+// Emoji and English labels are UI concerns not stored in the DB schema
+const CATEGORY_EMOJI = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', crafts: '🧶' };
+const CATEGORY_EN    = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
@@ -162,9 +158,6 @@ function GroupHeader({ icon: Icon, title, subtitle, color }) {
   );
 }
 
-// category id → product.category string
-const CATEGORY_MAP = { 2: 'food', 3: 'sweets', 4: 'frozen', 5: 'spices', 6: 'crafts' };
-
 // ─── HOME PAGE ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -174,25 +167,67 @@ export default function HomePage() {
 
   const [searchQuery,    setSearchQuery]    = useState('');
   const [menuOpen,       setMenuOpen]       = useState(false);
-  const [activeCategory, setActiveCategory] = useState(0);
+  const [activeCategory, setActiveCategory] = useState('all');
   const [currentCityAr,  setCurrentCityAr]  = useState('جدة');
   const [locationOpen,   setLocationOpen]   = useState(false);
   const [products,       setProducts]       = useState(PRODUCTS);
 
-  // Fetch from Supabase — falls back to static PRODUCTS if unavailable
+  // ─── Live data from Supabase ────────────────────────────────────────────────
+  const [cities,       setCities]       = useState([]);
+  const [dbCategories, setDbCategories] = useState([]);
+  const [loadingMeta,  setLoadingMeta]  = useState(true);
+
+  useEffect(() => {
+    const fetchMeta = async () => {
+      setLoadingMeta(true);
+      try {
+        const [
+          { data: citiesData,  error: citiesErr },
+          { data: catsData,    error: catsErr   },
+        ] = await Promise.all([
+          supabase.from('cities').select('id, name_ar, name_en, slug').order('id'),
+          supabase.from('categories').select('id, name_ar, slug').order('id'),
+        ]);
+
+        if (citiesErr) console.error('Failed to fetch cities:', citiesErr.message);
+        else           setCities(citiesData ?? []);
+
+        if (catsErr)   console.error('Failed to fetch categories:', catsErr.message);
+        else           setDbCategories(catsData ?? []);
+      } catch (err) {
+        console.error('Unexpected error fetching metadata:', err);
+      } finally {
+        setLoadingMeta(false);
+      }
+    };
+    fetchMeta();
+  }, []);
+
+  // Fetch products from Supabase — falls back to static PRODUCTS if unavailable
   useEffect(() => {
     fetchProducts().then((data) => { if (data?.length) setProducts(data); });
   }, []);
 
-  const currentCity     = CITIES.find((c) => c.ar === currentCityAr) ?? { ar: currentCityAr, en: currentCityAr };
-  const currentCityDisplay = lang === 'ar' ? currentCity.ar : currentCity.en;
+  // Two static UI-only entries prepended to the live DB categories
+  const CATEGORIES = useMemo(() => [
+    { slug: 'all',  name: t('cat_all'),          emoji: null, special: false },
+    { slug: 'fast', name: t('cat_fastDelivery'), emoji: '⚡', special: true  },
+    ...dbCategories.map((cat) => ({
+      slug:    cat.slug,
+      name:    lang === 'ar' ? cat.name_ar : (CATEGORY_EN[cat.slug] ?? cat.name_ar),
+      emoji:   CATEGORY_EMOJI[cat.slug] ?? '📦',
+      special: false,
+    })),
+  ], [dbCategories, lang, t]);
+
+  const currentCity        = cities.find((c) => c.name_ar === currentCityAr) ?? { name_ar: currentCityAr, name_en: currentCityAr };
+  const currentCityDisplay = lang === 'ar' ? currentCity.name_ar : currentCity.name_en;
 
   const handleAddToCart = (product) => addItem(product);
 
   const { perishableInCity, nationwideProducts } = useMemo(() => {
-    const catKey  = CATEGORY_MAP[activeCategory];
-    const isFast  = activeCategory === 1;
-    const query   = searchQuery.trim().toLowerCase();
+    const isFast = activeCategory === 'fast';
+    const query  = searchQuery.trim().toLowerCase();
 
     const matchesSearch = (p) =>
       !query ||
@@ -201,7 +236,8 @@ export default function HomePage() {
       p.family?.toLowerCase().includes(query) ||
       p.familyEn?.toLowerCase().includes(query);
 
-    const matchesCat = (p) => !catKey || p.category === catKey;
+    const matchesCat = (p) =>
+      activeCategory === 'all' || isFast || p.category === activeCategory;
 
     const perishable = products.filter(
       (p) => p.isPerishable && p.sellerCity === currentCityAr && matchesSearch(p) && matchesCat(p),
@@ -214,16 +250,6 @@ export default function HomePage() {
   }, [currentCityAr, products, activeCategory, searchQuery]);
 
   const totalVisible = perishableInCity.length + nationwideProducts.length;
-
-  const CATEGORIES = [
-    { id: 0, name: t('cat_all'),          emoji: null,  special: false },
-    { id: 1, name: t('cat_fastDelivery'), emoji: '⚡',  special: true  },
-    { id: 2, name: t('cat_mainDishes'),   emoji: '🍛',  special: false },
-    { id: 3, name: t('cat_desserts'),     emoji: '🍰',  special: false },
-    { id: 4, name: t('cat_frozen'),       emoji: '❄️',  special: false },
-    { id: 5, name: t('cat_spices'),       emoji: '🌿',  special: false },
-    { id: 6, name: t('cat_handmade'),     emoji: '🧶',  special: false },
-  ];
 
   const TRUST_FEATURES = [
     { Icon: Truck,   title: t('trust1_title'), desc: t('trust1_desc') },
@@ -335,22 +361,29 @@ export default function HomePage() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setLocationOpen(false)} />
                   <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl shadow-lg border border-gray-100 py-1.5 min-w-[170px] z-50 overflow-hidden">
-                    {CITIES.map((city) => (
-                      <button
-                        key={city.ar}
-                        onClick={() => { setCurrentCityAr(city.ar); setLocationOpen(false); }}
-                        className={`w-full text-right px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-3
-                          ${currentCityAr === city.ar
-                            ? 'text-blue-900 font-bold bg-blue-50'
-                            : 'text-gray-700 hover:bg-gray-50'
-                          }`}
-                      >
-                        <span>{lang === 'ar' ? city.ar : city.en}</span>
-                        {currentCityAr === city.ar && (
-                          <span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 text-white text-[9px] font-black">✓</span>
-                        )}
-                      </button>
-                    ))}
+                    {loadingMeta ? (
+                      <div className="px-4 py-3 flex items-center gap-2.5 text-sm text-gray-400">
+                        <div className="w-4 h-4 rounded-full border-2 border-blue-300 border-t-transparent animate-spin shrink-0" />
+                        {lang === 'ar' ? 'جاري التحميل…' : 'Loading…'}
+                      </div>
+                    ) : (
+                      cities.map((city) => (
+                        <button
+                          key={city.id}
+                          onClick={() => { setCurrentCityAr(city.name_ar); setLocationOpen(false); }}
+                          className={`w-full text-right px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-3
+                            ${currentCityAr === city.name_ar
+                              ? 'text-blue-900 font-bold bg-blue-50'
+                              : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                          <span>{lang === 'ar' ? city.name_ar : city.name_en}</span>
+                          {currentCityAr === city.name_ar && (
+                            <span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 text-white text-[9px] font-black">✓</span>
+                          )}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </>
               )}
@@ -489,31 +522,39 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div className="flex gap-2.5 overflow-x-auto pb-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-            {CATEGORIES.map((cat) => {
-              const isActive = activeCategory === cat.id;
-              if (cat.special) {
+          {loadingMeta ? (
+            <div className="flex gap-2.5 overflow-x-auto pb-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="shrink-0 h-10 w-28 rounded-2xl bg-gray-200 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-2.5 overflow-x-auto pb-3 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+              {CATEGORIES.map((cat) => {
+                const isActive = activeCategory === cat.slug;
+                if (cat.special) {
+                  return (
+                    <button key={cat.slug} onClick={() => setActiveCategory(cat.slug)}
+                      className={`shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-sm transition-all duration-200 border
+                        ${isActive ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-200' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'}`}
+                    >
+                      <span className="text-base">{cat.emoji}</span>
+                      <span>{cat.name}</span>
+                    </button>
+                  );
+                }
                 return (
-                  <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
+                  <button key={cat.slug} onClick={() => setActiveCategory(cat.slug)}
                     className={`shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-sm transition-all duration-200 border
-                      ${isActive ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-200' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'}`}
+                      ${isActive ? 'bg-blue-900 text-white border-blue-900 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-200 hover:text-blue-700'}`}
                   >
-                    <span className="text-base">{cat.emoji}</span>
+                    {cat.emoji && <span className="text-base">{cat.emoji}</span>}
                     <span>{cat.name}</span>
                   </button>
                 );
-              }
-              return (
-                <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
-                  className={`shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-sm transition-all duration-200 border
-                    ${isActive ? 'bg-blue-900 text-white border-blue-900 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-200 hover:text-blue-700'}`}
-                >
-                  {cat.emoji && <span className="text-base">{cat.emoji}</span>}
-                  <span>{cat.name}</span>
-                </button>
-              );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </section>
 
