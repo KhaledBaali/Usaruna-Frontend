@@ -50,12 +50,47 @@ function Navbar({ t, dir, isRtl, toggle, totalCount }) {
   );
 }
 
+// ─── DELIVERY OPTION META ─────────────────────────────────────────────────────
+
+const DELIVERY_META = {
+  pickup:          { emoji: '🏪', arLabel: 'استلام شخصي',    enLabel: 'Pickup'          },
+  seller_delivery: { emoji: '🛵', arLabel: 'توصيل من البائع', enLabel: 'Seller Delivery' },
+  third_party:     { emoji: '📦', arLabel: 'شركة شحن',        enLabel: 'Shipping Co.'    },
+};
+
+// ─── MINI MAP (OSM iframe embed — no extra library needed in cart) ─────────────
+
+function MiniMap({ location, title }) {
+  if (!location?.lat || !location?.lng) return null;
+  const { lat, lng } = location;
+  const d = 0.012;
+  const src =
+    `https://www.openstreetmap.org/export/embed.html` +
+    `?bbox=${lng - d},${lat - d},${lng + d},${lat + d}` +
+    `&layer=mapnik&marker=${lat},${lng}`;
+  return (
+    <div className="mt-2 rounded-xl overflow-hidden border border-gray-200" style={{ height: 120 }}>
+      <iframe
+        title={title}
+        src={src}
+        style={{ width: '100%', height: '100%', border: 'none' }}
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
 // ─── CART ITEM ────────────────────────────────────────────────────────────────
 
 function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty }) {
   const name   = lang === 'ar' ? item.name   : (item.nameEn   || item.name);
   const family = lang === 'ar' ? item.family : (item.familyEn || item.family);
   const city   = lang === 'ar' ? item.sellerCity : (item.sellerCityEn || item.sellerCity);
+
+  const delivMeta = item.deliveryOption ? DELIVERY_META[item.deliveryOption] : null;
+  const delivLabel = delivMeta
+    ? (lang === 'ar' ? delivMeta.arLabel : delivMeta.enLabel)
+    : null;
 
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 sm:p-5 flex gap-4 items-start">
@@ -69,10 +104,41 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty }) {
         <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-snug line-clamp-2 mb-1">
           {name}
         </h3>
-        <p className="text-xs text-blue-600 font-medium flex items-center gap-1 mb-3">
+        <p className="text-xs text-blue-600 font-medium flex items-center gap-1 mb-2">
           <MapPin size={11} className="shrink-0" />
           {family} · {city}
         </p>
+
+        {/* Delivery badge */}
+        {delivMeta && (
+          <div className="mb-3">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-full px-2.5 py-1">
+              <span>{delivMeta.emoji}</span>
+              {delivLabel}
+              {item.deliveryPrice > 0 && (
+                <span className="text-gray-400 font-normal">· {item.deliveryPrice} {t('cart_sar')}</span>
+              )}
+              {item.deliveryPrice === 0 && (
+                <span className="text-emerald-600 font-bold">· {lang === 'ar' ? 'مجاناً' : 'Free'}</span>
+              )}
+            </span>
+
+            {/* Location address */}
+            {item.deliveryLocation?.address && (
+              <div className="mt-1.5 flex items-start gap-1.5">
+                <MapPin size={11} className="text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
+                  {item.deliveryLocation.address}
+                </p>
+              </div>
+            )}
+
+            {/* Mini OSM map */}
+            {item.deliveryLocation?.lat && item.deliveryLocation?.lng && (
+              <MiniMap location={item.deliveryLocation} title={`location-${item.id}`} />
+            )}
+          </div>
+        )}
 
         {/* Price + controls row */}
         <div className="flex items-center justify-between flex-wrap gap-3">

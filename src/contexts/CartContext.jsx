@@ -5,13 +5,18 @@ const CartContext = createContext(null);
 export function CartProvider({ children }) {
   const [items, setItems] = useState([]);
 
-  const addItem = (product, qty = 1) => {
+  // meta = { deliveryOption, deliveryLocation, deliveryPrice }
+  const addItem = (product, qty = 1, meta = {}) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id);
       if (existing) {
-        return prev.map((i) => i.id === product.id ? { ...i, qty: i.qty + qty } : i);
+        return prev.map((i) =>
+          i.id === product.id
+            ? { ...i, qty: i.qty + qty, ...meta }
+            : i
+        );
       }
-      return [...prev, { ...product, qty }];
+      return [...prev, { ...product, qty, ...meta }];
     });
   };
 

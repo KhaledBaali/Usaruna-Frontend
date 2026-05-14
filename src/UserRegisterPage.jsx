@@ -119,7 +119,7 @@ export default function UserRegisterPage() {
     if (!form.fullName.trim())       errs.fullName = t('ureg_errName');
     if (!form.email.trim())          errs.email = t('ureg_errEmail');
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('ureg_errEmailFmt');
-    if (form.phone && !/^5\d{8}$/.test(form.phone)) errs.phone = t('ureg_errPhone');
+    if (form.phone && !/^05\d{8}$/.test(form.phone.trim())) errs.phone = t('ureg_errPhone');
     if (!pwValid(form.password))     errs.password = t('ureg_errPw');
     if (form.password !== form.confirmPassword) errs.confirmPassword = t('ureg_errPwMatch');
     return errs;
@@ -140,6 +140,7 @@ export default function UserRegisterPage() {
       });
       if (authError) throw authError;
       setSuccess(true);
+      setTimeout(() => navigate('/'), 1500);
     } catch (err) {
       setError(err.message?.includes('already registered') ? t('ureg_errTaken') : t('ureg_errGeneric'));
     } finally {
