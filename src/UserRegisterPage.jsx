@@ -140,6 +140,7 @@ export default function UserRegisterPage() {
       });
       if (authError) throw authError;
       setSuccess(true);
+      setTimeout(() => navigate('/'), 1500);
     } catch (err) {
       setError(err.message?.includes('already registered') ? t('ureg_errTaken') : t('ureg_errGeneric'));
     } finally {

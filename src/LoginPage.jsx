@@ -230,23 +230,29 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
+      let authData = null;
       if (loginMode === 'email') {
-        const { error: authError } = await supabase.auth.signInWithPassword({
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
           email: identifier.trim(),
           password,
         });
         if (authError) throw authError;
+        authData = data;
       } else {
         const phone = '+966' + identifier.trim().replace(/^0+/, '');
-        const { error: authError } = await supabase.auth.verifyOtp({
+        const { data, error: authError } = await supabase.auth.verifyOtp({
           phone,
           token: otp.join(''),
           type: 'sms',
         });
         if (authError) throw authError;
+        authData = data;
       }
       setSuccess(true);
-      setTimeout(() => navigate('/'), 1500);
+      console.log('User Metadata:', authData?.user?.user_metadata);
+      const role = authData?.user?.user_metadata?.role;
+      // Navigate immediately — session is confirmed, no delay needed
+      navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {
       setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);
     } finally {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import logo from './assets/logo.png';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   User, Users, Mail, Phone, Lock, Eye, EyeOff,
   MapPin, Tag, FileText, Shield, Loader2, AlertCircle,
@@ -114,6 +114,7 @@ function SectionDivider({ label }) {
 // ─── FAMILY REGISTER PAGE ─────────────────────────────────────────────────────
 
 export default function FamilyRegisterPage() {
+  const navigate = useNavigate();
   const { lang, dir, toggle, t } = useLang();
 
   const isRtl  = dir === 'rtl';
@@ -236,7 +237,16 @@ export default function FamilyRegisterPage() {
         });
       if (profileError) throw profileError;
 
-      setSuccess(true);
+      if (data.session) {
+        // Force a fresh JWT so the dashboard's getSession() sees the producer role immediately.
+        // Without this, the newly-issued token may not yet reflect the metadata in the local store.
+        await supabase.auth.refreshSession();
+        setSuccess(true);
+        setTimeout(() => navigate('/dashboard'), 1500);
+      } else {
+        // Email confirmation required — user must verify before accessing the dashboard.
+        setSuccess(true);
+      }
     } catch (err) {
       if (err.message?.includes('already registered')) {
         setError(t('freg_errTaken'));
