@@ -9,6 +9,7 @@ import FamilyRegisterPage from './FamilyRegisterPage';
 import ProductDetailsPage from './ProductDetailsPage';
 import CartPage from './CartPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
+import SellerDashboard from './SellerDashboard';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/register"        element={<UserRegisterPage />}   />
               <Route path="/register-family" element={<FamilyRegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/dashboard"      element={<SellerDashboard />}    />
             </Routes>
           </Router>
         </CartProvider>
