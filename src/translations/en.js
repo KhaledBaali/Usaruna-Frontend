@@ -329,6 +329,20 @@ export default {
   cart_sar:              'SAR',
   cart_free:             'Free',
 
+  // ─── Checkout Page ───────────────────────────────────────────────────────────
+  checkout_title:            'Checkout',
+  checkout_backToCart:       'Back to Cart',
+  checkout_orderSummary:     'Order Summary',
+  checkout_paymentMethod:    'Payment Method',
+  checkout_payNow:           'Pay Now',
+  checkout_processing:       'Processing...',
+  checkout_secureNote:       'Fully encrypted & secure payment',
+  checkout_statusConfirmed:  'Confirmed',
+  checkout_successTitle:     'Order Received! 🎉',
+  checkout_successDesc:      'We will contact you shortly to confirm the delivery schedule.',
+  checkout_orderNum:         'Order Number',
+  checkout_continueShopping: 'Continue Shopping',
+
   // ─── AI Features ─────────────────────────────────────────────────────────────
   ai_summary_title:       'AI Review Summary',
   ai_summary_loading:     'Summarizing reviews with AI...',

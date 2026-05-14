@@ -219,17 +219,23 @@ function OrderSummary({ t, subtotal, isRtl }) {
       </div>
 
       {/* Checkout button */}
-      <button
-        disabled={!hasItems}
-        className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 mb-3
-          ${hasItems
-            ? 'bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white shadow-sm'
-            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-          }`}
-      >
-        {isRtl ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
-        {t('cart_checkout')}
-      </button>
+      {hasItems ? (
+        <Link
+          to="/checkout"
+          className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 mb-3 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white shadow-sm"
+        >
+          {isRtl ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
+          {t('cart_checkout')}
+        </Link>
+      ) : (
+        <button
+          disabled
+          className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 mb-3 bg-gray-100 text-gray-400 cursor-not-allowed"
+        >
+          {isRtl ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
+          {t('cart_checkout')}
+        </button>
+      )}
 
       <Link
         to="/"

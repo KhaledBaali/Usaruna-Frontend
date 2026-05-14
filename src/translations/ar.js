@@ -329,6 +329,20 @@ export default {
   cart_sar:              'ر.س',
   cart_free:             'مجاني',
 
+  // ─── Checkout Page ───────────────────────────────────────────────────────────
+  checkout_title:            'إتمام الطلب',
+  checkout_backToCart:       'العودة للسلة',
+  checkout_orderSummary:     'ملخص الطلبية',
+  checkout_paymentMethod:    'طريقة الدفع',
+  checkout_payNow:           'ادفع الآن',
+  checkout_processing:       'جاري المعالجة...',
+  checkout_secureNote:       'دفع مشفر وآمن بالكامل',
+  checkout_statusConfirmed:  'تم التأكيد',
+  checkout_successTitle:     'تم استلام طلبك! 🎉',
+  checkout_successDesc:      'سيتم التواصل معك قريباً لتأكيد الموعد والتوصيل.',
+  checkout_orderNum:         'رقم الطلب',
+  checkout_continueShopping: 'متابعة التسوق',
+
   // ─── AI Features ─────────────────────────────────────────────────────────────
   ai_summary_title:       'ملخص الذكاء الاصطناعي',
   ai_summary_loading:     'جاري تلخيص التقييمات بالذكاء الاصطناعي...',

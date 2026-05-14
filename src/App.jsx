@@ -9,6 +9,7 @@ import FamilyRegisterPage from './FamilyRegisterPage';
 import ProductDetailsPage from './ProductDetailsPage';
 import CartPage from './CartPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
+import CheckoutPage from './CheckoutPage';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="/"                element={<HomePage />}           />
               <Route path="/product/:id"     element={<ProductDetailsPage />} />
               <Route path="/cart"            element={<CartPage />}           />
+              <Route path="/checkout"        element={<CheckoutPage />}       />
               <Route path="/login"           element={<LoginPage />}          />
               <Route path="/register"        element={<UserRegisterPage />}   />
               <Route path="/register-family" element={<FamilyRegisterPage />} />
