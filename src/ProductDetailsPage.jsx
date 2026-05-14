@@ -7,6 +7,7 @@ import {
   Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
   Wand2, Copy, Check, Loader2,
 } from 'lucide-react';
+import LocationPicker from './LocationPicker';
 import { PRODUCTS } from './products';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
@@ -198,7 +199,11 @@ export default function ProductDetailsPage() {
 
   const handleAddToCart = () => {
     if (stockLevel === 'out') return;
-    addItem(product, quantity);
+    addItem(product, quantity, {
+      deliveryOption:   deliveryOption,
+      deliveryLocation: customerLocation,
+      deliveryPrice:    deliveryPrice,
+    });
     setAdded(true);
     showToast(`${t('toast_addedCart')} (${quantity})`, '🛒', 'cart');
     setTimeout(() => setAdded(false), 1800);
@@ -248,6 +253,8 @@ export default function ProductDetailsPage() {
       setSmartReplyLoading((prev) => ({ ...prev, [review.id]: false }));
     }
   };
+
+  const [customerLocation, setCustomerLocation] = useState(null);
 
   const [enhancedDesc,   setEnhancedDesc]   = useState(null);
   const [enhancingDesc,  setEnhancingDesc]  = useState(false);
@@ -621,7 +628,7 @@ export default function ProductDetailsPage() {
                 {availableDelivery.map((opt) => {
                   const isSelected = (deliveryOption ?? availableDelivery[0].id) === opt.id;
                   return (
-                    <button key={opt.id} onClick={() => setDeliveryOption(opt.id)}
+                    <button key={opt.id} onClick={() => { setDeliveryOption(opt.id); setCustomerLocation(null); }}
                       className={`flex items-center gap-3.5 p-3.5 rounded-2xl border-2 transition-all duration-200 text-right
                         ${isSelected ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-gray-50 hover:border-gray-200'}`}
                     >
@@ -650,6 +657,71 @@ export default function ProductDetailsPage() {
                   );
                 })}
               </div>
+
+              {/* ── Location section (appears below selected option) ── */}
+
+              {/* Pickup: show seller's location on map (readonly) */}
+              {deliveryOption === 'pickup' && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className={`text-xs font-bold text-gray-500 mb-2.5 flex items-center gap-1.5 ${dir === 'ltr' ? 'flex-row-reverse' : ''}`}>
+                    <MapPin size={12} className="text-emerald-600 shrink-0" />
+                    {lang === 'ar' ? 'موقع الاستلام من الأسرة المنتجة' : 'Pickup location from family seller'}
+                  </p>
+                  <LocationPicker
+                    key={`pickup-${product.id}`}
+                    mode="pickup"
+                    sellerCity={lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity)}
+                    lang={lang}
+                  />
+                </div>
+              )}
+
+              {/* Seller delivery: customer confirms their delivery address */}
+              {deliveryOption === 'seller_delivery' && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className={`text-xs font-bold text-gray-500 mb-2.5 flex items-center gap-1.5 ${dir === 'ltr' ? 'flex-row-reverse' : ''}`}>
+                    <MapPin size={12} className="text-blue-600 shrink-0" />
+                    {lang === 'ar' ? 'حدد موقعك لتوصيل البائع' : 'Set your location for seller delivery'}
+                  </p>
+                  <LocationPicker
+                    key="seller-delivery-picker"
+                    mode="customer"
+                    onConfirm={setCustomerLocation}
+                    lang={lang}
+                  />
+                </div>
+              )}
+
+              {/* Third-party shipping: customer confirms their shipping address */}
+              {deliveryOption === 'third_party' && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className={`text-xs font-bold text-gray-500 mb-2.5 flex items-center gap-1.5 ${dir === 'ltr' ? 'flex-row-reverse' : ''}`}>
+                    <MapPin size={12} className="text-blue-600 shrink-0" />
+                    {lang === 'ar' ? 'حدد عنوان الشحن على الخريطة' : 'Pin your shipping address on the map'}
+                  </p>
+                  <LocationPicker
+                    key="third-party-picker"
+                    mode="customer"
+                    onConfirm={setCustomerLocation}
+                    lang={lang}
+                  />
+                </div>
+              )}
+
+              {/* Confirmed location badge */}
+              {customerLocation && (deliveryOption === 'seller_delivery' || deliveryOption === 'third_party') && (
+                <div className="mt-3 flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <Check size={14} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-emerald-800">
+                      {lang === 'ar' ? 'موقع التوصيل مؤكد' : 'Delivery location confirmed'}
+                    </p>
+                    <p className="text-[11px] text-emerald-600 mt-0.5 leading-snug line-clamp-2">
+                      {customerLocation.address}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Desktop CTA */}
