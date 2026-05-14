@@ -14,9 +14,8 @@ import { supabase } from './supabase';
 import logo from './assets/logo.png';
 
 // ─── CATEGORY DISPLAY MAPS ────────────────────────────────────────────────────
-// Emoji and English labels are UI concerns not stored in the DB schema
-const CATEGORY_EMOJI = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', crafts: '🧶' };
-const CATEGORY_EN    = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
+// English labels are a UI concern not stored in the DB schema
+const CATEGORY_EN = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
@@ -172,6 +171,12 @@ export default function HomePage() {
   const [locationOpen,   setLocationOpen]   = useState(false);
   const [products,       setProducts]       = useState(PRODUCTS);
 
+  // Maps a category slug to its display emoji — keeps emoji out of the DB schema
+  const getCategoryEmoji = (slug) => {
+    const map = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', crafts: '🧶' };
+    return map[slug] ?? '📦';
+  };
+
   // ─── Live data from Supabase ────────────────────────────────────────────────
   const [cities,       setCities]       = useState([]);
   const [dbCategories, setDbCategories] = useState([]);
@@ -182,18 +187,20 @@ export default function HomePage() {
       setLoadingMeta(true);
       try {
         const [
-          { data: citiesData,  error: citiesErr },
-          { data: catsData,    error: catsErr   },
+          { data: citiesData,     error: citiesError },
+          { data: categoriesData, error: categoriesError },
         ] = await Promise.all([
           supabase.from('cities').select('id, name_ar, name_en, slug').order('id'),
           supabase.from('categories').select('id, name_ar, slug').order('id'),
         ]);
 
-        if (citiesErr) console.error('Failed to fetch cities:', citiesErr.message);
-        else           setCities(citiesData ?? []);
+        console.log("Supabase Data:", { citiesData, categoriesData, error: citiesError || categoriesError });
 
-        if (catsErr)   console.error('Failed to fetch categories:', catsErr.message);
-        else           setDbCategories(catsData ?? []);
+        if (citiesError)     console.error('Failed to fetch cities:', citiesError.message);
+        else                 setCities(citiesData ?? []);
+
+        if (categoriesError) console.error('Failed to fetch categories:', categoriesError.message);
+        else                 setDbCategories(categoriesData ?? []);
       } catch (err) {
         console.error('Unexpected error fetching metadata:', err);
       } finally {
@@ -215,7 +222,7 @@ export default function HomePage() {
     ...dbCategories.map((cat) => ({
       slug:    cat.slug,
       name:    lang === 'ar' ? cat.name_ar : (CATEGORY_EN[cat.slug] ?? cat.name_ar),
-      emoji:   CATEGORY_EMOJI[cat.slug] ?? '📦',
+      emoji:   getCategoryEmoji(cat.slug),
       special: false,
     })),
   ], [dbCategories, lang, t]);
