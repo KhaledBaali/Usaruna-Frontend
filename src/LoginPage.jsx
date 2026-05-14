@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import logo from './assets/logo.png';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Mail, Phone, Lock, Eye, EyeOff, Shield,
   Loader2, AlertCircle, Globe, Smartphone,
@@ -59,6 +59,7 @@ const T = {
     errPassword: 'يرجى إدخال كلمة المرور',
     errOtp: 'يرجى إدخال رمز التحقق المكوّن من 6 أرقام',
     errPhone: 'يرجى إدخال رقم الجوال أولاً',
+    errPhoneLen: 'رقم الجوال يجب أن يكون 9 أرقام (مثال: 512345678)',
     errCreds: 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
     errGeneric: 'حدث خطأ، يرجى المحاولة مرة أخرى',
     langBtn: 'English',
@@ -111,6 +112,7 @@ const T = {
     errPassword: 'Please enter your password',
     errOtp: 'Please enter the full 6-digit verification code',
     errPhone: 'Please enter your phone number first',
+    errPhoneLen: 'Phone number must be 9 digits (e.g. 512345678)',
     errCreds: 'Invalid email or password',
     errGeneric: 'An error occurred, please try again',
     langBtn: 'العربية',
@@ -194,6 +196,7 @@ function OtpInput({ otp, onChange, onKeyDown, refs }) {
 // ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
+  const navigate = useNavigate();
   const [lang,         setLang]         = useState('ar');
   const [loginMode,    setLoginMode]    = useState('email');
   const [identifier,   setIdentifier]   = useState('');
@@ -221,22 +224,31 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
 
-    if (!identifier.trim()) { setError(t.errEmail);    return; }
+    if (!identifier.trim()) { setError(t.errEmail); return; }
     if (loginMode === 'email' && !password) { setError(t.errPassword); return; }
-    if (loginMode === 'otp'   && otp.join('').length < 6) { setError(t.errOtp); return; }
+    if (loginMode === 'otp' && otp.join('').length < 6) { setError(t.errOtp); return; }
 
     setIsLoading(true);
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier.trim(),
-        password,
-      });
-      if (authError) throw authError;
+      if (loginMode === 'email') {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: identifier.trim(),
+          password,
+        });
+        if (authError) throw authError;
+      } else {
+        const phone = '+966' + identifier.trim().replace(/^0+/, '');
+        const { error: authError } = await supabase.auth.verifyOtp({
+          phone,
+          token: otp.join(''),
+          type: 'sms',
+        });
+        if (authError) throw authError;
+      }
       setSuccess(true);
+      setTimeout(() => navigate('/'), 1500);
     } catch (err) {
-      setError(
-        err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric
-      );
+      setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);
     } finally {
       setIsLoading(false);
     }
@@ -245,10 +257,19 @@ export default function LoginPage() {
   const handleSendOtp = async () => {
     setError('');
     if (!identifier.trim()) { setError(t.errPhone); return; }
+    const digits = identifier.trim().replace(/\D/g, '');
+    if (digits.length !== 9) { setError(t.errPhoneLen); return; }
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setIsLoading(false);
-    setOtpSent(true);
+    try {
+      const phone = '+966' + digits;
+      const { error } = await supabase.auth.signInWithOtp({ phone });
+      if (error) throw error;
+      setOtpSent(true);
+    } catch (err) {
+      setError(err.message || t.errGeneric);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOtpChange = (index, value) => {
@@ -414,9 +435,9 @@ export default function LoginPage() {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-bold text-gray-700">{t.labelPassword}</label>
-                        <a href="#" className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors">
+                        <Link to="/forgot-password" className="text-xs text-blue-600 hover:text-blue-800 font-semibold transition-colors">
                           {t.forgot}
-                        </a>
+                        </Link>
                       </div>
                       <div className="relative">
                         <Lock size={16} className={`absolute ${iStart} top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none`} />

@@ -14,6 +14,8 @@ export default {
   nav_families:    'Producer Families',
   nav_contact:     'Contact Us',
   nav_langToggle:  'ع',
+  nav_logout:      'Logout',
+  nav_hello:       'Hello,',
 
   // ─── Location bar ────────────────────────────────────────────────────────────
   loc_freshAvailable:   'fresh dishes available now in',
@@ -326,4 +328,14 @@ export default {
   cart_itemCount1:       'item',
   cart_sar:              'SAR',
   cart_free:             'Free',
+
+  // ─── AI Features ─────────────────────────────────────────────────────────────
+  ai_summary_title:       'AI Review Summary',
+  ai_summary_loading:     'Summarizing reviews with AI...',
+  ai_smartReply:          'Suggest Reply',
+  ai_smartReply_loading:  'Generating reply...',
+  ai_smartReply_copy:     'Copy',
+  ai_smartReply_copied:   'Copied!',
+  ai_enhance:             'Enhance with AI',
+  ai_enhancing:           'Enhancing...',
 };

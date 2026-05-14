@@ -5,17 +5,16 @@ import {
   User, Users, Mail, Phone, Lock, Eye, EyeOff,
   MapPin, Tag, FileText, Shield, Loader2, AlertCircle,
   Check, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight,
-  ChevronDown, Globe,
+  ChevronDown, Globe, Wand2,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useLang } from './contexts/LanguageContext';
+import { enhanceDescription } from './lib/aiApi';
 
 // ─── STATIC DATA ──────────────────────────────────────────────────────────────
 
 const CITIES = [
-  'الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة',
-  'الدمام', 'القصيم', 'تبوك', 'أبها', 'حائل', 'ينبع',
-  'الباحة', 'الأحساء', 'بريدة', 'خميس مشيط',
+  'الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'ينبع',
 ];
 
 const CATEGORIES = [
@@ -147,11 +146,32 @@ export default function FamilyRegisterPage() {
   const [showPw,      setShowPw]      = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading,   setIsLoading]   = useState(false);
+  const [enhancing,   setEnhancing]   = useState(false);
   const [error,       setError]       = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [success,     setSuccess]     = useState(false);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleEnhance = async () => {
+    if (!form.description.trim() || enhancing) return;
+    setEnhancing(true);
+    try {
+      const enhanced = await enhanceDescription(form.description);
+      setForm((f) => ({ ...f, description: enhanced }));
+    } catch { /* keep original text */ } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const pwChecks = (pw) => ({
+    length:  pw.length >= 8,
+    upper:   /[A-Z]/.test(pw),
+    number:  /[0-9]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+    english: pw.length > 0 && !/[؀-ۿ]/.test(pw),
+  });
+  const pwValid = (pw) => Object.values(pwChecks(pw)).every(Boolean);
 
   const validate = () => {
     const errs = {};
@@ -160,10 +180,10 @@ export default function FamilyRegisterPage() {
     if (!form.email.trim())       errs.email           = t('freg_errEmail');
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('freg_errEmailFmt');
     if (!form.phone.trim())       errs.phone           = t('freg_errPhone');
-    else if (!/^05\d{8}$/.test(form.phone)) errs.phone = t('freg_errPhoneFmt');
+    else if (!/^5\d{8}$/.test(form.phone)) errs.phone = t('freg_errPhoneFmt');
     if (!form.city)               errs.city            = t('freg_errCity');
     if (!form.category)           errs.category        = t('freg_errCat');
-    if (form.password.length < 8) errs.password        = t('freg_errPw');
+    if (!pwValid(form.password))  errs.password        = t('freg_errPw');
     if (form.password !== form.confirmPassword) errs.confirmPassword = t('freg_errPwMatch');
     return errs;
   };
@@ -421,6 +441,19 @@ export default function FamilyRegisterPage() {
                         className={`w-full bg-gray-100 rounded-2xl py-3 ${pStart} ${pEnd} text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all duration-200 resize-none`}
                       />
                     </div>
+                    {form.description.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleEnhance}
+                        disabled={enhancing}
+                        className="mt-2 flex items-center gap-1.5 text-xs font-bold text-violet-600 hover:text-violet-800 transition-colors disabled:opacity-50 disabled:cursor-default"
+                      >
+                        {enhancing
+                          ? <><Loader2 size={13} className="animate-spin" />{t('ai_enhancing')}</>
+                          : <><Wand2 size={13} />{t('ai_enhance')}</>
+                        }
+                      </button>
+                    )}
                   </Field>
 
                   <SectionDivider label={t('freg_secLogin')} />
@@ -445,20 +478,29 @@ export default function FamilyRegisterPage() {
                         {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
                     </div>
-                    {form.password && (
-                      <div className="flex gap-1 mt-2">
-                        {[1, 2, 3, 4].map((n) => (
-                          <div
-                            key={n}
-                            className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                              form.password.length >= n * 3
-                                ? n <= 2 ? 'bg-red-400' : n === 3 ? 'bg-amber-400' : 'bg-emerald-500'
-                                : 'bg-gray-200'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    {form.password && (() => {
+                      const c = pwChecks(form.password);
+                      const allOk = Object.values(c).every(Boolean);
+                      const checks = [
+                        { key: 'length',  label: lang === 'ar' ? '8 أحرف على الأقل' : 'At least 8 characters' },
+                        { key: 'upper',   label: lang === 'ar' ? 'حرف كبير (A-Z)'    : 'Uppercase letter (A-Z)' },
+                        { key: 'number',  label: lang === 'ar' ? 'رقم (0-9)'          : 'Number (0-9)' },
+                        { key: 'special', label: lang === 'ar' ? 'رمز خاص (!@#...)'   : 'Special character (!@#...)' },
+                        { key: 'english', label: lang === 'ar' ? 'أحرف إنجليزية فقط'  : 'English characters only' },
+                      ];
+                      return (
+                        <div className={`mt-2 p-2.5 rounded-xl border ${allOk ? 'border-emerald-200 bg-emerald-50' : 'border-gray-100 bg-gray-50'} flex flex-col gap-1`}>
+                          {checks.map(({ key, label }) => (
+                            <div key={key} className="flex items-center gap-1.5 text-[11px] font-medium">
+                              <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${c[key] ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                                {c[key] && <Check size={8} className="text-white" strokeWidth={3} />}
+                              </span>
+                              <span className={c[key] ? 'text-emerald-700' : 'text-gray-500'}>{label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </Field>
 
                   {/* Confirm password */}

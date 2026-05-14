@@ -8,22 +8,18 @@ import {
 import { PRODUCTS } from './products';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import { useAuth } from './contexts/AuthContext';
 import { fetchProducts } from './lib/api';
 import logo from './assets/logo.png';
 
 // ─── CITIES ───────────────────────────────────────────────────────────────────
 
 const CITIES = [
-  { ar: 'الرياض', en: 'Riyadh' },
-  { ar: 'جدة',    en: 'Jeddah' },
-  { ar: 'مكة المكرمة', en: 'Mecca' },
+  { ar: 'الرياض',          en: 'Riyadh' },
+  { ar: 'جدة',             en: 'Jeddah' },
+  { ar: 'مكة المكرمة',     en: 'Mecca'  },
   { ar: 'المدينة المنورة', en: 'Medina' },
-  { ar: 'الدمام', en: 'Dammam' },
-  { ar: 'القصيم', en: 'Qassim' },
-  { ar: 'تبوك',   en: 'Tabuk' },
-  { ar: 'أبها',   en: 'Abha' },
-  { ar: 'حائل',   en: "Ha'il" },
-  { ar: 'ينبع',   en: 'Yanbu' },
+  { ar: 'ينبع',            en: 'Yanbu'  },
 ];
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
@@ -166,11 +162,15 @@ function GroupHeader({ icon: Icon, title, subtitle, color }) {
   );
 }
 
+// category id → product.category string
+const CATEGORY_MAP = { 2: 'food', 3: 'sweets', 4: 'frozen', 5: 'spices', 6: 'crafts' };
+
 // ─── HOME PAGE ────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const { lang, dir, toggle, t } = useLang();
   const { addItem, totalCount } = useCart();
+  const { user, logout, displayName } = useAuth();
 
   const [searchQuery,    setSearchQuery]    = useState('');
   const [menuOpen,       setMenuOpen]       = useState(false);
@@ -189,10 +189,29 @@ export default function HomePage() {
 
   const handleAddToCart = (product) => addItem(product);
 
-  const { perishableInCity, nationwideProducts } = useMemo(() => ({
-    perishableInCity:   products.filter((p) =>  p.isPerishable && p.sellerCity === currentCityAr),
-    nationwideProducts: products.filter((p) => !p.isPerishable),
-  }), [currentCityAr, products]);
+  const { perishableInCity, nationwideProducts } = useMemo(() => {
+    const catKey  = CATEGORY_MAP[activeCategory];
+    const isFast  = activeCategory === 1;
+    const query   = searchQuery.trim().toLowerCase();
+
+    const matchesSearch = (p) =>
+      !query ||
+      p.name?.toLowerCase().includes(query) ||
+      p.nameEn?.toLowerCase().includes(query) ||
+      p.family?.toLowerCase().includes(query) ||
+      p.familyEn?.toLowerCase().includes(query);
+
+    const matchesCat = (p) => !catKey || p.category === catKey;
+
+    const perishable = products.filter(
+      (p) => p.isPerishable && p.sellerCity === currentCityAr && matchesSearch(p) && matchesCat(p),
+    );
+    const nationwide = isFast
+      ? []
+      : products.filter((p) => !p.isPerishable && matchesSearch(p) && matchesCat(p));
+
+    return { perishableInCity: perishable, nationwideProducts: nationwide };
+  }, [currentCityAr, products, activeCategory, searchQuery]);
 
   const totalVisible = perishableInCity.length + nationwideProducts.length;
 
@@ -266,9 +285,24 @@ export default function HomePage() {
                 </span>
               )}
             </Link>
-            <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
-              <User size={21} className="text-blue-900" />
-            </Link>
+            {user ? (
+              <div className="hidden sm:flex items-center gap-2">
+                <span className="text-sm font-bold text-blue-900 flex items-center gap-1.5">
+                  <User size={16} className="text-blue-700" />
+                  {displayName}
+                </span>
+                <button
+                  onClick={logout}
+                  className="text-xs font-bold text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 bg-white rounded-xl px-3 py-1.5 transition-colors"
+                >
+                  {t('nav_logout')}
+                </button>
+              </div>
+            ) : (
+              <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
+                <User size={21} className="text-blue-900" />
+              </Link>
+            )}
             <button
               className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors sm:hidden"
               onClick={() => setMenuOpen(!menuOpen)}

@@ -14,6 +14,8 @@ export default {
   nav_families:    'الأسر المنتجة',
   nav_contact:     'تواصل معنا',
   nav_langToggle:  'EN',
+  nav_logout:      'تسجيل الخروج',
+  nav_hello:       'أهلاً،',
 
   // ─── Location bar ────────────────────────────────────────────────────────────
   loc_freshAvailable:   'طبخة طازجة متاحة الآن في',
@@ -87,7 +89,7 @@ export default {
   footer_faq:           'الأسئلة الشائعة',
   footer_phone:         '+966 50 000 0000',
   footer_email:         'hello@usaruna.sa',
-  footer_address:       'الرياض، المملكة العربية السعودية',
+  footer_address:       'جدة, المملكة العربية السعودية',
   footer_copyright:     '© 2025 اسرنا. جميع الحقوق محفوظة.',
   footer_privacy:       'سياسة الخصوصية',
   footer_usageTerms:    'شروط الاستخدام',
@@ -326,4 +328,14 @@ export default {
   cart_itemCount1:       'منتج',
   cart_sar:              'ر.س',
   cart_free:             'مجاني',
+
+  // ─── AI Features ─────────────────────────────────────────────────────────────
+  ai_summary_title:       'ملخص الذكاء الاصطناعي',
+  ai_summary_loading:     'جاري تلخيص التقييمات بالذكاء الاصطناعي...',
+  ai_smartReply:          'اقتراح رد',
+  ai_smartReply_loading:  'جاري توليد الرد...',
+  ai_smartReply_copy:     'نسخ',
+  ai_smartReply_copied:   'تم النسخ!',
+  ai_enhance:             'تحسين بالذكاء الاصطناعي',
+  ai_enhancing:           'جاري التحسين...',
 };

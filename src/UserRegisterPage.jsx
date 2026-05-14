@@ -105,13 +105,22 @@ export default function UserRegisterPage() {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  const pwChecks = (pw) => ({
+    length:  pw.length >= 8,
+    upper:   /[A-Z]/.test(pw),
+    number:  /[0-9]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+    english: pw.length > 0 && !/[؀-ۿ]/.test(pw),
+  });
+  const pwValid = (pw) => Object.values(pwChecks(pw)).every(Boolean);
+
   const validate = () => {
     const errs = {};
     if (!form.fullName.trim())       errs.fullName = t('ureg_errName');
     if (!form.email.trim())          errs.email = t('ureg_errEmail');
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('ureg_errEmailFmt');
-    if (form.phone && !/^05\d{8}$/.test(form.phone)) errs.phone = t('ureg_errPhone');
-    if (form.password.length < 8)    errs.password = t('ureg_errPw');
+    if (form.phone && !/^5\d{8}$/.test(form.phone)) errs.phone = t('ureg_errPhone');
+    if (!pwValid(form.password))     errs.password = t('ureg_errPw');
     if (form.password !== form.confirmPassword) errs.confirmPassword = t('ureg_errPwMatch');
     return errs;
   };
@@ -254,13 +263,29 @@ export default function UserRegisterPage() {
                         {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
                     </div>
-                    {form.password && (
-                      <div className="flex gap-1 mt-2">
-                        {[1,2,3,4].map((n) => (
-                          <div key={n} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${form.password.length >= n*3 ? n<=2?'bg-red-400':n===3?'bg-amber-400':'bg-emerald-500' : 'bg-gray-200'}`} />
-                        ))}
-                      </div>
-                    )}
+                    {form.password && (() => {
+                      const c = pwChecks(form.password);
+                      const allOk = Object.values(c).every(Boolean);
+                      const checks = [
+                        { key: 'length',  label: lang === 'ar' ? '8 أحرف على الأقل' : 'At least 8 characters' },
+                        { key: 'upper',   label: lang === 'ar' ? 'حرف كبير (A-Z)'    : 'Uppercase letter (A-Z)' },
+                        { key: 'number',  label: lang === 'ar' ? 'رقم (0-9)'          : 'Number (0-9)' },
+                        { key: 'special', label: lang === 'ar' ? 'رمز خاص (!@#...)'   : 'Special character (!@#...)' },
+                        { key: 'english', label: lang === 'ar' ? 'أحرف إنجليزية فقط'  : 'English characters only' },
+                      ];
+                      return (
+                        <div className={`mt-2 p-2.5 rounded-xl border ${allOk ? 'border-emerald-200 bg-emerald-50' : 'border-gray-100 bg-gray-50'} flex flex-col gap-1`}>
+                          {checks.map(({ key, label }) => (
+                            <div key={key} className="flex items-center gap-1.5 text-[11px] font-medium">
+                              <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${c[key] ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                                {c[key] && <Check size={8} className="text-white" strokeWidth={3} />}
+                              </span>
+                              <span className={c[key] ? 'text-emerald-700' : 'text-gray-500'}>{label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </Field>
 
                   <Field label={`${t('ureg_labelConfirm')} *`} error={fieldErrors.confirmPassword}>
