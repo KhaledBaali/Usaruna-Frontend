@@ -9,8 +9,9 @@ import FamilyRegisterPage from './FamilyRegisterPage';
 import ProductDetailsPage from './ProductDetailsPage';
 import CartPage from './CartPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
-import CheckoutPage from './CheckoutPage';
 
+// SellerDashboard owns its own auth guard (DB query on mount).
+// No wrapper needed — any unauthenticated or unauthorized visit is handled inside the component.
 export default function App() {
   return (
     <LanguageProvider>
@@ -21,11 +22,11 @@ export default function App() {
               <Route path="/"                element={<HomePage />}           />
               <Route path="/product/:id"     element={<ProductDetailsPage />} />
               <Route path="/cart"            element={<CartPage />}           />
-              <Route path="/checkout"        element={<CheckoutPage />}       />
               <Route path="/login"           element={<LoginPage />}          />
               <Route path="/register"        element={<UserRegisterPage />}   />
               <Route path="/register-family" element={<FamilyRegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/dashboard" element={<SellerDashboard />} />
             </Routes>
           </Router>
         </CartProvider>

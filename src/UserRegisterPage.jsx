@@ -119,7 +119,7 @@ export default function UserRegisterPage() {
     if (!form.fullName.trim())       errs.fullName = t('ureg_errName');
     if (!form.email.trim())          errs.email = t('ureg_errEmail');
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('ureg_errEmailFmt');
-    if (form.phone && !/^5\d{8}$/.test(form.phone)) errs.phone = t('ureg_errPhone');
+    if (form.phone && !/^05\d{8}$/.test(form.phone.trim())) errs.phone = t('ureg_errPhone');
     if (!pwValid(form.password))     errs.password = t('ureg_errPw');
     if (form.password !== form.confirmPassword) errs.confirmPassword = t('ureg_errPwMatch');
     return errs;
@@ -133,19 +133,30 @@ export default function UserRegisterPage() {
     setFieldErrors({});
     setIsLoading(true);
     try {
-      const { error: authError } = await supabase.auth.signUp({
+      const { data, error: authError } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
         options: { data: { full_name: form.fullName.trim(), phone: form.phone.trim() || null, role: 'customer' } },
       });
       if (authError) throw authError;
-      setSuccess(true);
+
+      if (data.session) {
+        // Auto-confirm enabled — session is live immediately.
+        // CartContext will detect user → userId transition and sync the guest cart automatically.
+        setSuccess(true);
+        setTimeout(() => navigate('/'), 1200);
+      } else {
+        // Email confirmation required — show the "check your email" screen.
+        // Cart sync will happen after the user clicks the confirmation link and logs in.
+        setSuccess(true);
+      }
     } catch (err) {
       setError(err.message?.includes('already registered') ? t('ureg_errTaken') : t('ureg_errGeneric'));
     } finally {
       setIsLoading(false);
     }
   };
+
 
   const inputCls = (key) =>
     `w-full bg-gray-100 rounded-2xl py-3 ${pStart} ${pEnd} text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:bg-white transition-all duration-200 ${fieldErrors[key] ? 'focus:ring-red-400 ring-2 ring-red-300' : 'focus:ring-blue-400'}`;

@@ -1,32 +1,68 @@
 import { supabase } from '../supabase';
-import { PRODUCTS } from '../products';
+// Removed MOCK_REVIEWS to ensure strict live data only
 
-// ── Static fallback reviews (used when Supabase is unavailable) ───────────────
-export const MOCK_REVIEWS = [
-  { id: 1,  lang: 'ar', author: 'سارة أحمد',      author_en: 'Sara Ahmed',         rating: 5, date: '28 أبريل 2025', date_en: 'April 28, 2025',  verified: true,  helpful: 14, comment: 'منتج رائع جداً! الطعم أصيل ومميز تماماً. التوصيل كان في الوقت المحدد والتغليف ممتاز. سأطلب مرة أخرى بالتأكيد!', comment_en: 'Excellent product! The taste is authentic and unique. Delivery was on time and packaging was great. I will definitely order again!' },
-  { id: 2,  lang: 'ar', author: 'محمد العتيبي',    author_en: 'Mohammed Al-Otaibi', rating: 5, date: '22 أبريل 2025', date_en: 'April 22, 2025', verified: true,  helpful: 9,  comment: 'أفضل منتج اشتريته من المنصة. الجودة عالية جداً والكمية كافية. أنصح به بشدة لكل من يريد طعاماً منزلياً أصيلاً.', comment_en: 'Best product I have bought from the platform. Quality is very high and quantity is sufficient. I highly recommend it for anyone looking for authentic home cooking.' },
-  { id: 3,  lang: 'ar', author: 'نورة الشمري',    author_en: 'Noura Al-Shamri',    rating: 4, date: '15 أبريل 2025', date_en: 'April 15, 2025', verified: true,  helpful: 6,  comment: 'جيد جداً ويستحق السعر. الطعم لذيذ لكن الكمية كانت أقل قليلاً من المتوقع. بشكل عام تجربة ممتازة.', comment_en: 'Very good and worth the price. The taste is delicious but the quantity was slightly less than expected. Overall an excellent experience.' },
-  { id: 4,  lang: 'ar', author: 'خالد الزهراني',  author_en: 'Khalid Al-Zahrani',  rating: 5, date: '10 أبريل 2025', date_en: 'April 10, 2025', verified: false, helpful: 8,  comment: 'طلبت للعائلة وكلهم أعجبهم كثيراً. الطعم منزلي وأصيل. الله يبارك في أسرة البائع ويزيدهم من فضله.', comment_en: 'I ordered for the family and everyone loved it. The taste is homemade and authentic. Blessings to the seller\'s family.' },
-  { id: 5,  lang: 'ar', author: 'فاطمة القحطاني', author_en: 'Fatima Al-Qahtani',  rating: 3, date: '5 أبريل 2025',  date_en: 'April 5, 2025',  verified: true,  helpful: 3,  comment: 'المنتج جيد لكن كنت أتوقع طعماً أقوى. الكمية كافية والتوصيل كان في الوقت. ربما أجرب مرة أخرى.', comment_en: 'The product is good but I expected a stronger taste. Quantity is sufficient and delivery was on time. Maybe I will try again.' },
-  { id: 6,  lang: 'ar', author: 'عبدالله المطيري', author_en: 'Abdullah Al-Mutairi', rating: 4, date: '28 مارس 2025', date_en: 'March 28, 2025', verified: true,  helpful: 5,  comment: 'ممتاز! البائع محترم جداً وتواصله سريع. التوصيل جاء في الوقت والمنتج بحالة ممتازة.', comment_en: 'Excellent! The seller is very professional with fast communication. Delivery arrived on time and the product was in great condition.' },
-  { id: 7,  lang: 'ar', author: 'ريم السلمي',     author_en: 'Reem Al-Salmi',      rating: 5, date: '20 مارس 2025', date_en: 'March 20, 2025', verified: true,  helpful: 11, comment: 'شكراً لأسرة البائع على هذا المنتج الرائع! يذكرني بطبخ والدتي رحمها الله. سأطلب دائماً من هذا المتجر.', comment_en: 'Thank you to the seller\'s family for this wonderful product! It reminds me of my late mother\'s cooking. I will always order from this store.' },
-  { id: 8,  lang: 'ar', author: 'أحمد الغامدي',   author_en: 'Ahmed Al-Ghamdi',    rating: 2, date: '15 مارس 2025', date_en: 'March 15, 2025', verified: false, helpful: 1,  comment: 'المنتج وصل متأخراً عن الموعد المحدد ولم يكن بأفضل حال. آمل أن تتحسن الخدمة في المستقبل.', comment_en: 'The product arrived late and was not in the best condition. I hope the service improves in the future.' },
-  { id: 9,  lang: 'en', author: 'ليام ماكنزي',    author_en: 'Liam McKenzie',      rating: 5, date: '10 مايو 2025',  date_en: 'May 10, 2025',   verified: true,  helpful: 7,  comment: '', comment_en: 'Absolutely love this product! My wife and I discovered it through a friend and we have been ordering every week since. The quality is consistent and the flavors are unlike anything you find in stores. Fast delivery too!' },
-  { id: 10, lang: 'en', author: 'إيما كلارك',      author_en: 'Emma Clarke',        rating: 4, date: '2 مايو 2025',   date_en: 'May 2, 2025',    verified: true,  helpful: 4,  comment: '', comment_en: 'Really impressed with this purchase. You can tell it is made with care — the ingredients are fresh and the presentation is lovely. Knocked one star only because the packaging could be a bit sturdier for long-distance shipping, but the product itself is fantastic.' },
-];
+// ── Category → emoji/gradient maps (keeps emoji/colour out of the DB) ─────────
+// Keyed on slug (used for mock PRODUCTS) and on numeric id (used for DB rows).
+const CATEGORY_EMOJI = {
+  food:    '🍛',
+  sweets:  '🍰',
+  frozen:  '❄️',
+  spices:  '🌿',
+  crafts:  '🧶',
+};
+const CATEGORY_GRADIENT = {
+  food:    'from-amber-50 to-orange-100',
+  sweets:  'from-pink-50 to-rose-100',
+  frozen:  'from-sky-50 to-blue-100',
+  spices:  'from-green-50 to-emerald-100',
+  crafts:  'from-violet-50 to-purple-100',
+};
+// Numeric id maps — update these if your categories table rows differ.
+// DB default insert order: 1=food, 2=sweets, 3=frozen, 4=spices, 5=crafts
+const CATEGORY_EMOJI_BY_ID = { 1: '🍛', 2: '🍰', 3: '❄️', 4: '🌿', 5: '🧶' };
+const CATEGORY_GRADIENT_BY_ID = {
+  1: 'from-amber-50 to-orange-100',
+  2: 'from-pink-50 to-rose-100',
+  3: 'from-sky-50 to-blue-100',
+  4: 'from-green-50 to-emerald-100',
+  5: 'from-violet-50 to-purple-100',
+};
+const DEFAULT_GRADIENT = 'from-blue-50 to-indigo-100';
 
 // ── Normalise a Supabase product row into the shape the UI expects ────────────
+// Maps DB column names → field names consumed by ProductCard / ProductDetailsPage.
 function normaliseProduct(row) {
   if (!row) return null;
-  const p = row.producer_profiles;
+  const p       = row.producer_profiles;          // may be null if no profile exists yet
+  const catSlug = row.category?.slug ?? '';        // present only if the join succeeded
+  const catId   = row.category_id;                // always present
+
+  // Prefer slug-based lookup (accurate), fall back to id-based lookup, then row default
+  const emoji    = CATEGORY_EMOJI[catSlug]    ?? CATEGORY_EMOJI_BY_ID[catId]    ?? row.emoji    ?? '📦';
+  const gradient = CATEGORY_GRADIENT[catSlug] ?? CATEGORY_GRADIENT_BY_ID[catId] ?? row.gradient ?? DEFAULT_GRADIENT;
+
   return {
     ...row,
-    family:       p?.name_ar      ?? row.family,
-    familyEn:     p?.name_en      ?? row.familyEn,
-    sellerCity:   p?.city_ar      ?? row.sellerCity,
-    sellerCityEn: p?.city_en      ?? row.sellerCityEn,
-    whatsapp:     p?.whatsapp     ?? row.whatsapp,
+    // ── Display name (ProductCard reads `name` / `nameEn`) ──
+    name:         row.name_ar   ?? row.name,
+    nameEn:       row.name_en   ?? row.nameEn   ?? row.name_ar ?? row.name,
+    // ── Image: use Supabase URL; fall back to emoji thumbnail ──
+    image:        row.image_url ?? row.image,
+    // ── Delivery / freshness ──
+    isPerishable: row.is_perishable ?? row.isPerishable ?? false,
+    // ── Visual chrome ──
+    gradient,
+    emoji,
+    // ── Producer / seller metadata ──
+    family:       p?.business_name_ar ?? p?.name_ar ?? row.family,
+    familyEn:     p?.business_name_en ?? p?.name_en ?? row.familyEn,
+    sellerCity:   p?.city_ar       ?? p?.city       ?? row.sellerCity,
+    sellerCityEn: p?.city_en       ?? row.sellerCityEn,
+    whatsapp:     p?.whatsapp      ?? row.whatsapp,
     partnerSince: p?.partner_since ?? row.partnerSince,
+    // ── Review defaults (DB products won’t have these yet) ──
+    rating:       row.rating  ?? 0,
+    reviews:      row.reviews ?? 0,
   };
 }
 
@@ -35,13 +71,17 @@ export async function fetchProducts() {
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('*, producer_profiles(name_ar, name_en, city_ar, city_en)')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+      // Only join producer_profiles (safe via FK producer_id → auth.users → producer_profiles).
+      // The category join is intentionally omitted: we derive emoji/gradient from category_id
+      // using the local CATEGORY_EMOJI_BY_ID / CATEGORY_GRADIENT_BY_ID maps instead,
+      // avoiding any RLS or FK-registration issues on the categories table.
+      .select('*, producer_profiles(*)')
+      .eq('is_active', true);
     if (error) throw error;
     return data.map(normaliseProduct);
-  } catch {
-    return PRODUCTS;
+  } catch (err) {
+    console.warn('[api] fetchProducts failed:', err?.message);
+    return [];
   }
 }
 
@@ -49,13 +89,15 @@ export async function fetchProductById(id) {
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('*, producer_profiles(name_ar, name_en, city_ar, city_en, whatsapp, partner_since)')
+      .select('*, producer_profiles(*)')
       .eq('id', id)
-      .single();
+      .maybeSingle();
     if (error) throw error;
+    if (!data) return null;
     return normaliseProduct(data);
-  } catch {
-    return PRODUCTS.find((p) => p.id === id) ?? null;
+  } catch (err) {
+    console.warn('[api] fetchProductById failed:', err?.message);
+    return null;
   }
 }
 
@@ -68,7 +110,7 @@ export async function fetchReviews(productId) {
       .eq('product_id', productId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    if (!data?.length) return MOCK_REVIEWS;
+    if (!data?.length) return [];
     return data.map((r) => ({
       id:        r.id,
       author:    r.author_name_ar ?? r.author_name,
@@ -81,8 +123,9 @@ export async function fetchReviews(productId) {
       comment:   r.comment_ar ?? r.comment,
       comment_en:r.comment_en ?? r.comment,
     }));
-  } catch {
-    return MOCK_REVIEWS;
+  } catch (err) {
+    console.warn('[api] fetchReviews failed:', err?.message);
+    return [];
   }
 }
 

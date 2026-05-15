@@ -230,23 +230,31 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
+      let authData = null;
       if (loginMode === 'email') {
-        const { error: authError } = await supabase.auth.signInWithPassword({
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
           email: identifier.trim(),
           password,
         });
         if (authError) throw authError;
+        authData = data;
       } else {
         const phone = '+966' + identifier.trim().replace(/^0+/, '');
-        const { error: authError } = await supabase.auth.verifyOtp({
+        const { data, error: authError } = await supabase.auth.verifyOtp({
           phone,
           token: otp.join(''),
           type: 'sms',
         });
         if (authError) throw authError;
+        authData = data;
       }
+      // Use user_metadata.role as a fast routing hint.
+      // SellerDashboard is the authoritative guard via DB query on mount.
+      // Cart sync (guest → DB) happens automatically in CartContext when
+      // the auth state transitions from null → userId.
+      const role = authData.user?.user_metadata?.role;
       setSuccess(true);
-      setTimeout(() => navigate('/'), 1500);
+      navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {
       setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);
     } finally {

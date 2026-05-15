@@ -5,7 +5,7 @@ import {
   MapPin, Phone, Mail, ChevronLeft, ChevronRight, ChevronDown,
   Package, Shield, Truck, Award, Globe, Share2, AtSign, Clock,
 } from 'lucide-react';
-import { PRODUCTS } from './products';
+// Mock data removed in favor of live DB
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
@@ -14,9 +14,8 @@ import { supabase } from './supabase';
 import logo from './assets/logo.png';
 
 // ─── CATEGORY DISPLAY MAPS ────────────────────────────────────────────────────
-// Emoji and English labels are UI concerns not stored in the DB schema
-const CATEGORY_EMOJI = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', crafts: '🧶' };
-const CATEGORY_EN    = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
+// English labels are a UI concern not stored in the DB schema
+const CATEGORY_EN = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
@@ -51,8 +50,9 @@ function DeliveryTag({ isPerishable }) {
 
 function ProductCard({ product, onAddToCart }) {
   const { lang, t } = useLang();
-  const [liked, setLiked] = useState(false);
-  const [added, setAdded] = useState(false);
+  const [liked,     setLiked]     = useState(false);
+  const [added,     setAdded]     = useState(false);
+  const [imgError,  setImgError]  = useState(false);
   const navigate = useNavigate();
 
   const handleAdd = () => {
@@ -62,28 +62,38 @@ function ProductCard({ product, onAddToCart }) {
   };
 
   const goToProduct = () => navigate(`/product/${product.id}`);
-  const name  = lang === 'ar' ? product.name   : (product.nameEn   || product.name);
-  const badge = lang === 'ar' ? product.badge  : (product.badgeEn  || product.badge);
-  const city  = lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity);
-  const family= lang === 'ar' ? product.family : (product.familyEn || product.family);
+  const name   = lang === 'ar' ? product.name   : (product.nameEn   || product.name);
+  const badge  = lang === 'ar' ? product.badge  : (product.badgeEn  || product.badge);
+  const city   = lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity);
+  const family = lang === 'ar' ? product.family : (product.familyEn || product.family);
+  const hasRealImage = product.image_url && !imgError;
 
   return (
     <div className="bg-white rounded-3xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col">
       <div
         onClick={goToProduct}
-        className={`relative bg-gradient-to-br ${product.gradient} h-44 sm:h-48 flex items-center justify-center flex-shrink-0 cursor-pointer`}
+        className={`relative bg-gradient-to-br ${product.gradient ?? 'from-blue-50 to-indigo-100'} h-44 sm:h-48 flex items-center justify-center flex-shrink-0 cursor-pointer overflow-hidden`}
       >
-        <span className="text-6xl select-none drop-shadow-sm group-hover:scale-110 transition-transform duration-300">
-          {product.emoji}
-        </span>
+        {hasRealImage ? (
+          <img
+            src={product.image_url}
+            alt={name}
+            onError={() => setImgError(true)}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <span className="text-6xl select-none drop-shadow-sm group-hover:scale-110 transition-transform duration-300">
+            {product.emoji ?? '📦'}
+          </span>
+        )}
         {badge && (
-          <span className={`absolute top-3.5 right-3.5 ${product.badgeColor} text-white text-[11px] font-bold px-2.5 py-1 rounded-full`}>
+          <span className={`absolute top-3.5 right-3.5 ${product.badgeColor ?? 'bg-blue-600'} text-white text-[11px] font-bold px-2.5 py-1 rounded-full z-10`}>
             {badge}
           </span>
         )}
         <button
           onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
-          className="absolute top-3.5 left-3.5 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform"
+          className="absolute top-3.5 left-3.5 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform z-10"
           aria-label={t('card_wishlist')}
         >
           <Heart size={14} className={liked ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
@@ -100,14 +110,14 @@ function ProductCard({ product, onAddToCart }) {
 
         <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
           <MapPin size={11} className="shrink-0" />
-          {family} · {city}
+          {family ? `${family} · ${city}` : (city ?? '—')}
         </p>
 
-        <DeliveryTag isPerishable={product.isPerishable} />
+        <DeliveryTag isPerishable={product.isPerishable ?? product.is_perishable} />
 
         <div className="flex items-center gap-1.5">
-          <StarRating rating={product.rating} />
-          <span className="text-xs text-gray-400">({product.reviews})</span>
+          <StarRating rating={product.rating ?? 0} />
+          <span className="text-xs text-gray-400">({product.reviews ?? 0})</span>
         </div>
 
         <div className="flex items-center gap-2 mt-auto pt-0.5">
@@ -170,7 +180,15 @@ export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [currentCityAr,  setCurrentCityAr]  = useState('جدة');
   const [locationOpen,   setLocationOpen]   = useState(false);
-  const [products,       setProducts]       = useState(PRODUCTS);
+  // Start empty — real data comes from Supabase; mock PRODUCTS is only a fallback inside api.js
+  const [products,        setProducts]        = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  // Maps a category slug to its display emoji — keeps emoji out of the DB schema
+  const getCategoryEmoji = (slug) => {
+    const map = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', crafts: '🧶' };
+    return map[slug] ?? '📦';
+  };
 
   // ─── Live data from Supabase ────────────────────────────────────────────────
   const [cities,       setCities]       = useState([]);
@@ -182,18 +200,20 @@ export default function HomePage() {
       setLoadingMeta(true);
       try {
         const [
-          { data: citiesData,  error: citiesErr },
-          { data: catsData,    error: catsErr   },
+          { data: citiesData,     error: citiesError },
+          { data: categoriesData, error: categoriesError },
         ] = await Promise.all([
           supabase.from('cities').select('id, name_ar, name_en, slug').order('id'),
           supabase.from('categories').select('id, name_ar, slug').order('id'),
         ]);
 
-        if (citiesErr) console.error('Failed to fetch cities:', citiesErr.message);
-        else           setCities(citiesData ?? []);
+        console.log("Supabase Data:", { citiesData, categoriesData, error: citiesError || categoriesError });
 
-        if (catsErr)   console.error('Failed to fetch categories:', catsErr.message);
-        else           setDbCategories(catsData ?? []);
+        if (citiesError)     console.error('Failed to fetch cities:', citiesError.message);
+        else                 setCities(citiesData ?? []);
+
+        if (categoriesError) console.error('Failed to fetch categories:', categoriesError.message);
+        else                 setDbCategories(categoriesData ?? []);
       } catch (err) {
         console.error('Unexpected error fetching metadata:', err);
       } finally {
@@ -203,9 +223,12 @@ export default function HomePage() {
     fetchMeta();
   }, []);
 
-  // Fetch products from Supabase — falls back to static PRODUCTS if unavailable
+  // Fetch products from Supabase (falls back to static PRODUCTS inside api.js if DB unavailable)
   useEffect(() => {
-    fetchProducts().then((data) => { if (data?.length) setProducts(data); });
+    setLoadingProducts(true);
+    fetchProducts()
+      .then((data) => setProducts(data ?? []))
+      .finally(() => setLoadingProducts(false));
   }, []);
 
   // Two static UI-only entries prepended to the live DB categories
@@ -215,7 +238,7 @@ export default function HomePage() {
     ...dbCategories.map((cat) => ({
       slug:    cat.slug,
       name:    lang === 'ar' ? cat.name_ar : (CATEGORY_EN[cat.slug] ?? cat.name_ar),
-      emoji:   CATEGORY_EMOJI[cat.slug] ?? '📦',
+      emoji:   getCategoryEmoji(cat.slug),
       special: false,
     })),
   ], [dbCategories, lang, t]);
@@ -621,11 +644,40 @@ export default function HomePage() {
               subtitle={t('group_nationwideSubtitle')}
               color="blue"
             />
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
-              {nationwideProducts.map((product) => (
-                <ProductCard key={product.id} product={product} onAddToCart={handleAddToCart} />
-              ))}
-            </div>
+            {loadingProducts ? (
+              // Skeleton grid — 6 cards pulsing while Supabase responds
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm animate-pulse">
+                    <div className="h-44 sm:h-48 bg-gray-100" />
+                    <div className="p-5 flex flex-col gap-3">
+                      <div className="h-4 bg-gray-100 rounded-full w-3/4" />
+                      <div className="h-3 bg-gray-100 rounded-full w-1/2" />
+                      <div className="h-3 bg-gray-100 rounded-full w-1/3" />
+                      <div className="h-8 bg-gray-100 rounded-2xl mt-auto" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : nationwideProducts.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+                {nationwideProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} onAddToCart={handleAddToCart} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-3xl border-2 border-dashed border-gray-200 bg-white/60 py-16 px-6 text-center">
+                <div className="text-5xl mb-4 opacity-40">📦</div>
+                <h4 className="font-bold text-gray-700 text-base mb-2">
+                  {lang === 'ar' ? 'لا توجد منتجات متوفرة حالياً' : 'No products available right now'}
+                </h4>
+                <p className="text-gray-400 text-sm max-w-xs mx-auto leading-relaxed">
+                  {lang === 'ar'
+                    ? 'سيتم إضافة منتجات جديدة قريباً من الأسر المنتجة.'
+                    : 'New products from local families will be added soon.'}
+                </p>
+              </div>
+            )}
           </div>
 
         </div>

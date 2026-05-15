@@ -8,11 +8,11 @@ import {
   Wand2, Copy, Check, Loader2,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
-import { PRODUCTS } from './products';
+// Products removed for strict live DB tracking
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
-import { fetchProductById, fetchReviews, submitReview, MOCK_REVIEWS } from './lib/api';
+import { fetchProductById, fetchReviews, submitReview } from './lib/api';
 import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
 import logo from './assets/logo.png';
 
@@ -73,14 +73,17 @@ export default function ProductDetailsPage() {
   const { addItem, totalCount } = useCart();
   const { user, logout, displayName } = useAuth();
 
-  const staticProduct = PRODUCTS.find((p) => p.id === Number(id));
-  const [product, setProduct] = useState(staticProduct);
-  const [reviews, setReviews] = useState(MOCK_REVIEWS);
+  const [product, setProduct] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch from Supabase; fall back to static data
+  // Fetch from Supabase
   useEffect(() => {
-    fetchProductById(Number(id)).then((data) => { if (data) setProduct(data); });
-    fetchReviews(Number(id)).then((data)    => { if (data?.length) setReviews(data); });
+    setLoading(true);
+    Promise.all([
+      fetchProductById(Number(id)).then((data) => { if (data) setProduct(data); }),
+      fetchReviews(Number(id)).then((data)    => { if (data?.length) setReviews(data); })
+    ]).finally(() => setLoading(false));
   }, [id]);
 
   // AI: summarize reviews on demand (also called after reset)
@@ -124,6 +127,10 @@ export default function ProductDetailsPage() {
   const [smartReplies,      setSmartReplies]      = useState({});
   const [smartReplyLoading, setSmartReplyLoading] = useState({});
   const [copiedReply,       setCopiedReply]       = useState(null);
+
+  // Translate state
+  const [translatedComments,  setTranslatedComments]  = useState({});
+  const [translatingComments, setTranslatingComments] = useState({});
 
   const DELIVERY_OPTIONS = [
     { id: 'pickup',          emoji: '🏪', label: t('delivery_pickup_label'), desc: t('delivery_pickup_desc'), price: 0,  eta: t('delivery_pickup_eta')  },
@@ -225,16 +232,14 @@ export default function ProductDetailsPage() {
   };
 
   const handleHelpful = (reviewId) => {
+    const isVoted = helpfulVoted.has(reviewId);
     setHelpfulVoted((prev) => {
       const next = new Set(prev);
-      if (next.has(reviewId)) {
-        next.delete(reviewId);
-      } else {
-        next.add(reviewId);
-        showToast(t('toast_thankYou'), '👍');
-      }
+      if (isVoted) next.delete(reviewId);
+      else next.add(reviewId);
       return next;
     });
+    if (!isVoted) showToast(t('toast_thankYou'), '👍');
   };
 
   const handleSmartReply = async (review) => {
@@ -271,6 +276,26 @@ export default function ProductDetailsPage() {
     }
   };
 
+  const handleTranslate = async (review) => {
+    if (translatedComments[review.id]) {
+      setTranslatedComments((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
+      return;
+    }
+    const text = review.lang === 'en' ? review.comment_en : review.comment;
+    const targetLang = lang === 'ar' ? 'ar' : 'en';
+    setTranslatingComments((prev) => ({ ...prev, [review.id]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setTranslatedComments((prev) => ({ ...prev, [review.id]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingComments((prev) => ({ ...prev, [review.id]: false }));
+    }
+  };
+
   const handleCopyReply = (reviewId, text) => {
     navigator.clipboard?.writeText(text).catch(() => {});
     setCopiedReply(reviewId);
@@ -285,7 +310,15 @@ export default function ProductDetailsPage() {
     showToast(t('toast_reviewSent'), '⭐', 'review');
   };
 
-  // ── 404 ────────────────────────────────────────────────────────────────────
+  // ── 404 / Loading ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div dir={dir} className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 size={40} className="text-blue-900 animate-spin" />
+      </div>
+    );
+  }
+
   if (!product) {
     return (
       <div dir={dir} className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-4 text-center">
@@ -299,10 +332,8 @@ export default function ProductDetailsPage() {
     );
   }
 
-  const images         = product.images ?? [product.emoji];
-  const relatedProducts = PRODUCTS
-    .filter((p) => p.id !== product.id && p.isPerishable === product.isPerishable)
-    .slice(0, 3);
+  const images         = product.images ?? [product.image_url ?? product.emoji];
+  const relatedProducts = []; // To be fetched dynamically later if needed
 
   const certifications = lang === 'ar'
     ? product.certifications
@@ -391,9 +422,17 @@ export default function ProductDetailsPage() {
           <div className="w-full lg:w-[400px] shrink-0">
             <div className={`relative bg-gradient-to-br ${product.gradient} rounded-3xl h-72 sm:h-80 lg:h-[380px] flex items-center justify-center overflow-hidden`}>
               <div className="absolute inset-0 bg-white/10" />
-              <span className="text-[7rem] sm:text-[8.5rem] select-none drop-shadow-lg z-10 hover:scale-110 transition-transform duration-300">
-                {images[selectedImage]}
-              </span>
+              {typeof images[selectedImage] === 'string' && images[selectedImage].startsWith('http') ? (
+                <img 
+                  src={images[selectedImage]} 
+                  alt={product.name} 
+                  className="w-full h-full object-cover z-10 hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <span className="text-[7rem] sm:text-[8.5rem] select-none drop-shadow-lg z-10 hover:scale-110 transition-transform duration-300">
+                  {images[selectedImage]}
+                </span>
+              )}
               {(lang === 'ar' ? product.badge : product.badgeEn || product.badge) && (
                 <span className={`absolute top-4 right-4 ${product.badgeColor} text-white text-xs font-bold px-3 py-1.5 rounded-full z-10 shadow-sm`}>
                   {lang === 'ar' ? product.badge : (product.badgeEn || product.badge)}
@@ -409,14 +448,21 @@ export default function ProductDetailsPage() {
 
             {images.length > 1 && (
               <div className="flex gap-2.5 mt-4 justify-center flex-wrap">
-                {images.map((img, i) => (
-                  <button key={i} onClick={() => setSelectedImage(i)}
-                    className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${product.gradient} flex items-center justify-center text-2xl transition-all duration-200 border-2
-                      ${selectedImage === i ? 'border-blue-900 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-90 hover:scale-105'}`}
-                  >
-                    {img}
-                  </button>
-                ))}
+                {images.map((img, i) => {
+                  const isHttp = typeof img === 'string' && img.startsWith('http');
+                  return (
+                    <button key={i} onClick={() => setSelectedImage(i)}
+                      className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${product.gradient} flex items-center justify-center text-2xl transition-all duration-200 border-2 overflow-hidden
+                        ${selectedImage === i ? 'border-blue-900 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-90 hover:scale-105'}`}
+                    >
+                      {isHttp ? (
+                        <img src={img} alt="thumbnail" className="w-full h-full object-cover" />
+                      ) : (
+                        img
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -966,16 +1012,40 @@ export default function ProductDetailsPage() {
                     </div>
                   </div>
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed mb-3" dir={review.lang === 'en' ? 'ltr' : 'rtl'}>
+                <p className="text-sm text-gray-700 leading-relaxed mb-1" dir={review.lang === 'en' ? 'ltr' : 'rtl'}>
                   {review.lang === 'en' ? review.comment_en : review.comment}
                 </p>
-                <div className="flex items-center gap-4 flex-wrap">
+                {translatedComments[review.id] && (
+                  <div className="mt-1.5 mb-2 pt-2 border-t border-gray-100">
+                    <p className="text-sm text-gray-600 leading-relaxed" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                      {translatedComments[review.id]}
+                    </p>
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
+                      <Globe size={9} /> Google Translate
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-4 flex-wrap mt-2">
                   <button onClick={() => handleHelpful(review.id)}
                     className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${helpfulVoted.has(review.id) ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500'}`}
                   >
                     <ThumbsUp size={12} className={helpfulVoted.has(review.id) ? 'fill-blue-600' : ''} />
                     {t('pd_helpful')} ({review.helpful + (helpfulVoted.has(review.id) ? 1 : 0)})
                   </button>
+                  {review.lang !== lang && (
+                    <button
+                      onClick={() => handleTranslate(review)}
+                      disabled={translatingComments[review.id]}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                    >
+                      {translatingComments[review.id]
+                        ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                        : translatedComments[review.id]
+                          ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                          : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                      }
+                    </button>
+                  )}
                   <button
                     onClick={() => handleSmartReply(review)}
                     disabled={!!smartReplies[review.id] || smartReplyLoading[review.id]}

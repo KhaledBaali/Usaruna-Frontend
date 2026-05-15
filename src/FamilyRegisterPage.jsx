@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import logo from './assets/logo.png';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   User, Users, Mail, Phone, Lock, Eye, EyeOff,
   MapPin, Tag, FileText, Shield, Loader2, AlertCircle,
@@ -11,22 +11,13 @@ import { supabase } from './supabase';
 import { useLang } from './contexts/LanguageContext';
 import { enhanceDescription } from './lib/aiApi';
 
-// ─── STATIC DATA ──────────────────────────────────────────────────────────────
+// ─── CATEGORY EMOJI MAP ───────────────────────────────────────────────────────
+// Emojis are a UI concern — slugs come from the DB, emojis are mapped here
 
-const CITIES = [
-  'الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'ينبع',
-];
-
-const CATEGORIES = [
-  { value: 'food',   ar: '🍛 أطباق رئيسية ومطبخ', en: '🍛 Main Dishes & Cuisine'    },
-  { value: 'sweets', ar: '🍰 حلويات ومخبوزات',      en: '🍰 Sweets & Pastries'        },
-  { value: 'frozen', ar: '❄️ مفرزنات',              en: '❄️ Frozen Foods'             },
-  { value: 'spices', ar: '🌿 بهارات وأعشاب',        en: '🌿 Spices & Herbs'           },
-  { value: 'honey',  ar: '🍯 عسل ومنتجات طبيعية',  en: '🍯 Honey & Natural Products'  },
-  { value: 'crafts', ar: '🧶 مشغولات يدوية',         en: '🧶 Handmade Crafts'          },
-  { value: 'dates',  ar: '🌴 تمور ومنتجات تمر',     en: '🌴 Dates & Date Products'    },
-  { value: 'other',  ar: '📦 منتجات أخرى',           en: '📦 Other Products'           },
-];
+const getCategoryEmoji = (slug) => {
+  const map = { food: '🍛', sweets: '🍰', frozen: '❄️', spices: '🌿', honey: '🍯', crafts: '🧶', dates: '🌴' };
+  return map[slug] ?? '📦';
+};
 
 // ─── BRAND PANEL ──────────────────────────────────────────────────────────────
 
@@ -123,6 +114,7 @@ function SectionDivider({ label }) {
 // ─── FAMILY REGISTER PAGE ─────────────────────────────────────────────────────
 
 export default function FamilyRegisterPage() {
+  const navigate = useNavigate();
   const { lang, dir, toggle, t } = useLang();
 
   const isRtl  = dir === 'rtl';
@@ -151,7 +143,30 @@ export default function FamilyRegisterPage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [success,     setSuccess]     = useState(false);
 
+  // ── Live cities & categories from Supabase ────────────────────────────────
+  const [dbCities,     setDbCities]     = useState([]);
+  const [dbCategories, setDbCategories] = useState([]);
+  const [loadingMeta,  setLoadingMeta]  = useState(true);
+
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  useEffect(() => {
+    const fetchMeta = async () => {
+      const [
+        { data: citiesData,     error: citiesErr },
+        { data: categoriesData, error: catsErr   },
+      ] = await Promise.all([
+        supabase.from('cities').select('id, name_ar').order('id'),
+        supabase.from('categories').select('id, name_ar, slug').order('id'),
+      ]);
+      if (citiesErr)  console.error('cities fetch error:', citiesErr.message);
+      if (catsErr)    console.error('categories fetch error:', catsErr.message);
+      setDbCities(citiesData     ?? []);
+      setDbCategories(categoriesData ?? []);
+      setLoadingMeta(false);
+    };
+    fetchMeta();
+  }, []);
 
   const handleEnhance = async () => {
     if (!form.description.trim() || enhancing) return;
@@ -180,7 +195,7 @@ export default function FamilyRegisterPage() {
     if (!form.email.trim())       errs.email           = t('freg_errEmail');
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('freg_errEmailFmt');
     if (!form.phone.trim())       errs.phone           = t('freg_errPhone');
-    else if (!/^5\d{8}$/.test(form.phone)) errs.phone = t('freg_errPhoneFmt');
+    else if (!/^05\d{8}$/.test(form.phone.trim())) errs.phone = t('freg_errPhoneFmt');
     if (!form.city)               errs.city            = t('freg_errCity');
     if (!form.category)           errs.category        = t('freg_errCat');
     if (!pwValid(form.password))  errs.password        = t('freg_errPw');
@@ -196,33 +211,68 @@ export default function FamilyRegisterPage() {
     setFieldErrors({});
     setIsLoading(true);
     try {
-      const { error: authError } = await supabase.auth.signUp({
-        email: form.email.trim(),
+      // ── Step 1: Auth sign-up ─────────────────────────────────────────────────
+      const { data, error: authError } = await supabase.auth.signUp({
+        email:    form.email.trim(),
         password: form.password,
         options: {
           data: {
-            full_name:   form.ownerName.trim(),
-            family_name: form.familyName.trim(),
-            phone:       form.phone.trim(),
-            city:        form.city,
-            category:    form.category,
-            description: form.description.trim() || null,
-            role:        'seller',
+            full_name: form.ownerName.trim(),
+            phone:     form.phone.trim(),
+            role:      'producer',
           },
         },
       });
       if (authError) throw authError;
-      setSuccess(true);
+
+      // ── Step 2: Insert producer profile row ──────────────────────────────────
+      // This is the authoritative record that grants dashboard access.
+      // If this fails (e.g. RLS INSERT policy missing), the auth user still
+      // exists but has no profile → they'll be redirected out of /dashboard.
+      // The INSERT RLS policy "producers can insert own profile" must exist:
+      //   CREATE POLICY "producers can insert own profile"
+      //   ON public.producer_profiles FOR INSERT TO authenticated
+      //   WITH CHECK (auth.uid() = user_id);
+      const { error: profileError } = await supabase
+        .from('producer_profiles')
+        .insert({
+          user_id:          data.user.id,
+          business_name_ar: form.familyName.trim(),
+          city_id:          parseInt(form.city),
+          category_id:      parseInt(form.category),
+          description_ar:   form.description.trim() || null,
+        });
+
+      if (profileError) {
+        // Auth succeeded but profile insert failed — surface a specific error.
+        // The user now has an auth account; direct them to contact support
+        // rather than letting them retry (which would hit "already registered").
+        throw new Error(
+          `حساب المصادقة تم إنشاؤه لكن فشل إنشاء ملف المتجر: ${profileError.message}. ` +
+          `يرجى التواصل مع الدعم بالبريد ${form.email.trim()}`
+        );
+      }
+
+      if (data.session) {
+        // Refresh JWT so the dashboard's getSession() sees the updated metadata.
+        await supabase.auth.refreshSession();
+        setSuccess(true);
+        setTimeout(() => navigate('/dashboard'), 1500);
+      } else {
+        // Email confirmation required.
+        setSuccess(true);
+      }
     } catch (err) {
       if (err.message?.includes('already registered')) {
         setError(t('freg_errTaken'));
       } else {
-        setError(t('freg_errGeneric'));
+        setError(err.message || t('freg_errGeneric'));
       }
     } finally {
       setIsLoading(false);
     }
   };
+
 
   const inputCls = (key) =>
     `w-full bg-gray-100 rounded-2xl py-3 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:bg-white transition-all duration-200
@@ -399,11 +449,16 @@ export default function FamilyRegisterPage() {
                       <select
                         value={form.city}
                         onChange={set('city')}
-                        className={`${inputCls('city')} ${pStart} ${isRtl ? 'pl-8' : 'pr-8'} appearance-none cursor-pointer`}
+                        disabled={loadingMeta}
+                        className={`${inputCls('city')} ${pStart} ${isRtl ? 'pl-8' : 'pr-8'} appearance-none cursor-pointer disabled:opacity-60`}
                       >
-                        <option value="">{t('freg_cityPh')}</option>
-                        {CITIES.map((c) => (
-                          <option key={c} value={c}>{c}</option>
+                        <option value="">
+                          {loadingMeta
+                            ? (lang === 'ar' ? 'جاري التحميل...' : 'Loading...')
+                            : t('freg_cityPh')}
+                        </option>
+                        {dbCities.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name_ar}</option>
                         ))}
                       </select>
                     </div>
@@ -417,12 +472,17 @@ export default function FamilyRegisterPage() {
                       <select
                         value={form.category}
                         onChange={set('category')}
-                        className={`${inputCls('category')} ${pStart} ${isRtl ? 'pl-8' : 'pr-8'} appearance-none cursor-pointer`}
+                        disabled={loadingMeta}
+                        className={`${inputCls('category')} ${pStart} ${isRtl ? 'pl-8' : 'pr-8'} appearance-none cursor-pointer disabled:opacity-60`}
                       >
-                        <option value="">{t('freg_catPh')}</option>
-                        {CATEGORIES.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {lang === 'ar' ? c.ar : c.en}
+                        <option value="">
+                          {loadingMeta
+                            ? (lang === 'ar' ? 'جاري التحميل...' : 'Loading...')
+                            : t('freg_catPh')}
+                        </option>
+                        {dbCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {getCategoryEmoji(c.slug)} {c.name_ar}
                           </option>
                         ))}
                       </select>
