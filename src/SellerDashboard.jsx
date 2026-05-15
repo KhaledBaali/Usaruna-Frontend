@@ -289,16 +289,18 @@ const NAV_ITEMS = [
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function SellerDashboard() {
-  const navigate                   = useNavigate();
-  const { logout, displayName }    = useAuth(); // Only for UI display + logout action
+  const navigate                = useNavigate();
+  const { logout, displayName } = useAuth(); // UI display + logout only
 
-  // isLoadingAuth stays true until getSession() + DB fetch both resolve
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [profile,    setProfile]    = useState(null);
-  const [cities,     setCities]     = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [activeTab,  setActiveTab]  = useState('overview');
-  const [toast,      setToast]      = useState(null);
+  // isChecking blocks ALL rendering until the DB query resolves
+  // isAuthorized only becomes true when the DB confirms a producer_profiles row exists
+  const [isChecking,   setIsChecking]   = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [profile,      setProfile]      = useState(null);
+  const [cities,       setCities]       = useState([]);
+  const [categories,   setCategories]   = useState([]);
+  const [activeTab,    setActiveTab]    = useState('overview');
+  const [toast,        setToast]        = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -309,44 +311,39 @@ export default function SellerDashboard() {
     let cancelled = false;
 
     const run = async () => {
-      // Step 1: Await a fresh session — never check role from stale context state
+      // Step 1: Read the local session — instant, no network round-trip.
       const { data: { session } } = await supabase.auth.getSession();
-
       if (!session?.user) {
-        console.log('[Dashboard] Redirecting to /login — no session');
         if (!cancelled) navigate('/login');
         return;
       }
 
-      const role = session.user.user_metadata?.role;
-      if (role !== 'producer') {
-        console.log(`[Dashboard] Redirecting to / — role is "${role ?? 'undefined'}"`);
+      // Step 2: DB is the ONLY authorization check — no metadata, no role fields.
+      // A row in producer_profiles = this user is a producer. Full stop.
+      const { data: profileData, error: profileError } = await supabase
+        .from('producer_profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (profileError || !profileData) {
         if (!cancelled) navigate('/');
         return;
       }
 
-      // Step 2: Session + role confirmed — fetch profile and lookup tables in parallel
-      const [
-        { data: citiesData },
-        { data: catsData },
-        { data: profileData },
-      ] = await Promise.all([
+      // Step 3: Authorized — now fetch lookup tables for the UI.
+      const [{ data: citiesData }, { data: catsData }] = await Promise.all([
         supabase.from('cities').select('id, name_ar').order('id'),
         supabase.from('categories').select('id, name_ar').order('id'),
-        supabase.from('producer_profiles').select('*').eq('user_id', session.user.id).maybeSingle(),
       ]);
 
-      if (!profileData) {
-        console.log(`[Dashboard] Redirecting to / — no producer_profile for user ${session.user.id}`);
-        if (!cancelled) navigate('/');
-        return;
-      }
-
+      // Step 4: All data ready — unblock the render.
       if (!cancelled) {
         setCities(citiesData   ?? []);
         setCategories(catsData ?? []);
         setProfile(profileData);
-        setIsLoadingAuth(false); // Unblock render only after everything is confirmed
+        setIsAuthorized(true);
+        setIsChecking(false);
       }
     };
 
@@ -354,16 +351,16 @@ export default function SellerDashboard() {
     return () => { cancelled = true; };
   }, [navigate]);
 
-  // No navigate() fires while isLoadingAuth is true — this is the strict gate
-  if (isLoadingAuth) {
+  // While the DB query is in flight, render nothing but this — no navigate, no flash
+  if (isChecking) {
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         Loading...
       </div>
     );
   }
 
-  if (!profile) return null; // Safety net during in-flight redirect
+  if (!isAuthorized || !profile) return null; // safety net for in-flight redirects
 
   const profileCity = cities.find((c) => c.id === profile.city_id);
 

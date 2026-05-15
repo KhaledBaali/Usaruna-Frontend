@@ -248,10 +248,15 @@ export default function LoginPage() {
         if (authError) throw authError;
         authData = data;
       }
+      // Query the DB for role — never trust JWT metadata for routing decisions.
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', authData.user.id)
+        .single();
+
+      const role = profileData?.role;
       setSuccess(true);
-      console.log('User Metadata:', authData?.user?.user_metadata);
-      const role = authData?.user?.user_metadata?.role;
-      // Navigate immediately — session is confirmed, no delay needed
       navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {
       setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);

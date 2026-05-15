@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { CartProvider } from './contexts/CartContext';
 import { AuthProvider } from './contexts/AuthContext';
-import { supabase } from './supabase';
 import HomePage from './HomePage';
 import LoginPage from './LoginPage';
 import UserRegisterPage from './UserRegisterPage';
@@ -13,40 +11,8 @@ import CartPage from './CartPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
 import SellerDashboard from './SellerDashboard';
 
-// Blocks access to producer-only routes at the router level.
-// Awaits getSession() directly so the role check never fires before the session is loaded.
-function ProducerRoute({ children }) {
-  const [status, setStatus] = useState('checking'); // 'checking' | 'ok' | 'no-user' | 'wrong-role'
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) {
-        console.log('[ProducerRoute] Redirecting to /login — no session');
-        setStatus('no-user');
-        return;
-      }
-      const role = session.user.user_metadata?.role;
-      if (role !== 'producer') {
-        console.log(`[ProducerRoute] Redirecting to / — role is "${role ?? 'undefined'}"`);
-        setStatus('wrong-role');
-        return;
-      }
-      setStatus('ok');
-    });
-  }, []);
-
-  if (status === 'checking') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
-      </div>
-    );
-  }
-  if (status === 'no-user')    return <Navigate to="/login" replace />;
-  if (status === 'wrong-role') return <Navigate to="/" replace />;
-  return children;
-}
-
+// SellerDashboard owns its own auth guard (DB query on mount).
+// No wrapper needed — any unauthenticated or unauthorized visit is handled inside the component.
 export default function App() {
   return (
     <LanguageProvider>
@@ -61,7 +27,7 @@ export default function App() {
               <Route path="/register"        element={<UserRegisterPage />}   />
               <Route path="/register-family" element={<FamilyRegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/dashboard"       element={<ProducerRoute><SellerDashboard /></ProducerRoute>} />
+              <Route path="/dashboard"       element={<SellerDashboard />}    />
             </Routes>
           </Router>
         </CartProvider>
