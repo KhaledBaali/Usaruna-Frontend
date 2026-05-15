@@ -69,8 +69,20 @@ function Toast({ toast }) {
 // ─── Overview tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ profile, onNavigate }) {
+  const [productCount, setProductCount] = useState('—');
+
+  useEffect(() => {
+    supabase
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('producer_id', profile.id)
+      .then(({ count, error }) => {
+        if (!error && count !== null) setProductCount(count);
+      });
+  }, [profile.id]);
+
   const STATS = [
-    { label: 'المنتجات المنشورة', value: '—', Icon: Package,       color: 'bg-blue-50    text-blue-600'    },
+    { label: 'المنتجات المنشورة', value: productCount, Icon: Package,       color: 'bg-blue-50    text-blue-600'    },
     { label: 'الطلبات الواردة',   value: '—', Icon: ClipboardList, color: 'bg-amber-50   text-amber-600'   },
     { label: 'إجمالي المبيعات',   value: '—', Icon: TrendingUp,    color: 'bg-emerald-50 text-emerald-600' },
     { label: 'تقييم المتجر',      value: '—', Icon: Store,         color: 'bg-violet-50  text-violet-600'  },
