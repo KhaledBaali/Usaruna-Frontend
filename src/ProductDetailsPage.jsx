@@ -8,11 +8,11 @@ import {
   Wand2, Copy, Check, Loader2,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
-import { PRODUCTS } from './products';
+// Products removed for strict live DB tracking
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
-import { fetchProductById, fetchReviews, submitReview, MOCK_REVIEWS } from './lib/api';
+import { fetchProductById, fetchReviews, submitReview } from './lib/api';
 import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
 import logo from './assets/logo.png';
 
@@ -73,14 +73,17 @@ export default function ProductDetailsPage() {
   const { addItem, totalCount } = useCart();
   const { user, logout, displayName } = useAuth();
 
-  const staticProduct = PRODUCTS.find((p) => p.id === Number(id));
-  const [product, setProduct] = useState(staticProduct);
-  const [reviews, setReviews] = useState(MOCK_REVIEWS);
+  const [product, setProduct] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch from Supabase; fall back to static data
+  // Fetch from Supabase
   useEffect(() => {
-    fetchProductById(Number(id)).then((data) => { if (data) setProduct(data); });
-    fetchReviews(Number(id)).then((data)    => { if (data?.length) setReviews(data); });
+    setLoading(true);
+    Promise.all([
+      fetchProductById(Number(id)).then((data) => { if (data) setProduct(data); }),
+      fetchReviews(Number(id)).then((data)    => { if (data?.length) setReviews(data); })
+    ]).finally(() => setLoading(false));
   }, [id]);
 
   // AI: summarize reviews on demand (also called after reset)
@@ -307,7 +310,15 @@ export default function ProductDetailsPage() {
     showToast(t('toast_reviewSent'), '⭐', 'review');
   };
 
-  // ── 404 ────────────────────────────────────────────────────────────────────
+  // ── 404 / Loading ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div dir={dir} className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 size={40} className="text-blue-900 animate-spin" />
+      </div>
+    );
+  }
+
   if (!product) {
     return (
       <div dir={dir} className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-4 text-center">
@@ -321,10 +332,8 @@ export default function ProductDetailsPage() {
     );
   }
 
-  const images         = product.images ?? [product.emoji];
-  const relatedProducts = PRODUCTS
-    .filter((p) => p.id !== product.id && p.isPerishable === product.isPerishable)
-    .slice(0, 3);
+  const images         = product.images ?? [product.image_url ?? product.emoji];
+  const relatedProducts = []; // To be fetched dynamically later if needed
 
   const certifications = lang === 'ar'
     ? product.certifications
@@ -413,9 +422,17 @@ export default function ProductDetailsPage() {
           <div className="w-full lg:w-[400px] shrink-0">
             <div className={`relative bg-gradient-to-br ${product.gradient} rounded-3xl h-72 sm:h-80 lg:h-[380px] flex items-center justify-center overflow-hidden`}>
               <div className="absolute inset-0 bg-white/10" />
-              <span className="text-[7rem] sm:text-[8.5rem] select-none drop-shadow-lg z-10 hover:scale-110 transition-transform duration-300">
-                {images[selectedImage]}
-              </span>
+              {typeof images[selectedImage] === 'string' && images[selectedImage].startsWith('http') ? (
+                <img 
+                  src={images[selectedImage]} 
+                  alt={product.name} 
+                  className="w-full h-full object-cover z-10 hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <span className="text-[7rem] sm:text-[8.5rem] select-none drop-shadow-lg z-10 hover:scale-110 transition-transform duration-300">
+                  {images[selectedImage]}
+                </span>
+              )}
               {(lang === 'ar' ? product.badge : product.badgeEn || product.badge) && (
                 <span className={`absolute top-4 right-4 ${product.badgeColor} text-white text-xs font-bold px-3 py-1.5 rounded-full z-10 shadow-sm`}>
                   {lang === 'ar' ? product.badge : (product.badgeEn || product.badge)}
@@ -431,14 +448,21 @@ export default function ProductDetailsPage() {
 
             {images.length > 1 && (
               <div className="flex gap-2.5 mt-4 justify-center flex-wrap">
-                {images.map((img, i) => (
-                  <button key={i} onClick={() => setSelectedImage(i)}
-                    className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${product.gradient} flex items-center justify-center text-2xl transition-all duration-200 border-2
-                      ${selectedImage === i ? 'border-blue-900 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-90 hover:scale-105'}`}
-                  >
-                    {img}
-                  </button>
-                ))}
+                {images.map((img, i) => {
+                  const isHttp = typeof img === 'string' && img.startsWith('http');
+                  return (
+                    <button key={i} onClick={() => setSelectedImage(i)}
+                      className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${product.gradient} flex items-center justify-center text-2xl transition-all duration-200 border-2 overflow-hidden
+                        ${selectedImage === i ? 'border-blue-900 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-90 hover:scale-105'}`}
+                    >
+                      {isHttp ? (
+                        <img src={img} alt="thumbnail" className="w-full h-full object-cover" />
+                      ) : (
+                        img
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

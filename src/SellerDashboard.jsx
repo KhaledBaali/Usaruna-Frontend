@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Store, Package, MapPin, User, LogOut,
   CheckCircle, AlertCircle, Loader2, PlusCircle,
   ShoppingBag, Layers, Truck, Archive, ChevronRight,
   Settings, LayoutDashboard, TrendingUp, ClipboardList,
+  ImagePlus, FileImage, X, Upload,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -143,40 +144,198 @@ function OverviewTab({ profile, onNavigate }) {
   );
 }
 
+// ─── Image Upload Drop Zone ─────────────────────────────────────────────────────
+
+function ImageDropZone({ file, onFile, onClear, disabled }) {
+  const inputRef  = useRef(null);
+  const [drag, setDrag] = useState(false);
+
+  const accept = (f) => {
+    if (!f) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(f.type)) return;
+    if (f.size > 5 * 1024 * 1024) return; // 5 MB guard
+    onFile(f);
+  };
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault();
+    setDrag(false);
+    accept(e.dataTransfer.files[0]);
+  }, []);
+
+  const preview = file ? URL.createObjectURL(file) : null;
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDrag(true);  }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={onDrop}
+      onClick={() => !file && inputRef.current?.click()}
+      className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed
+        transition-all duration-200 overflow-hidden select-none
+        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        ${drag    ? 'border-blue-400 bg-blue-50 scale-[1.01]' : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/40'}
+        ${file    ? 'h-52' : 'h-44'}`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="sr-only"
+        disabled={disabled}
+        onChange={(e) => accept(e.target.files[0])}
+      />
+
+      {file ? (
+        <>
+          <img src={preview} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center gap-2 opacity-0 hover:opacity-100 transition-opacity duration-200">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onClear(); }}
+              className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+            >
+              <X size={12} /> حذف الصورة
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+              className="flex items-center gap-1.5 bg-white/90 hover:bg-white text-gray-800 text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+            >
+              <Upload size={12} /> استبدال
+            </button>
+          </div>
+          <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
+            <FileImage size={9} /> {(file.size / 1024).toFixed(0)} KB
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center gap-3 px-6 text-center pointer-events-none">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${drag ? 'bg-blue-100' : 'bg-gray-100'}`}>
+            <ImagePlus size={22} className={drag ? 'text-blue-500' : 'text-gray-400'} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-600">
+              {drag ? 'أفلت الصورة هنا' : 'اسحب صورة أو انقر للرفع'}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">JPEG · PNG · WebP · GIF — بحد أقصى 5 MB</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Add-Product form ──────────────────────────────────────────────────────────
 
 const EMPTY_PRODUCT = {
-  name_ar: '', price: '', category_id: '', city_id: '',
+  name_ar: '', description_ar: '', price: '', category_id: '', city_id: '',
   is_perishable: false, delivery_type: 'nationwide', stock: '',
 };
 
-function AddProductForm({ profile, cities, categories, showToast }) {
-  const [form, setForm] = useState(EMPTY_PRODUCT);
-  const [submitting, setSubmitting] = useState(false);
+// Upload phase labels shown in the submit button
+const PHASE_LABELS = {
+  idle:       null,
+  uploading:  'جاري رفع الصورة…',
+  saving:     'جاري حفظ المنتج…',
+};
 
+function AddProductForm({ profile, cities, categories, showToast }) {
+  const [form,      setForm]      = useState(EMPTY_PRODUCT);
+  const [imageFile, setImageFile] = useState(null);
+  const [phase,     setPhase]     = useState('idle'); // 'idle' | 'uploading' | 'saving'
+  const [fieldErrs, setFieldErrs] = useState({});
+
+  const submitting = phase !== 'idle';
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
+  // ── Validation ─────────────────────────────────────────────────────────────
+  const validate = () => {
+    const errs = {};
+    if (!form.name_ar.trim())   errs.name_ar     = 'اسم المنتج مطلوب';
+    if (!form.price)            errs.price        = 'السعر مطلوب';
+    else if (isNaN(parseFloat(form.price)) || parseFloat(form.price) < 0)
+                                errs.price        = 'يرجى إدخال سعر صحيح';
+    if (!form.stock)            errs.stock        = 'الكمية مطلوبة';
+    if (!form.category_id)      errs.category_id  = 'يرجى اختيار الفئة';
+    if (!form.city_id)          errs.city_id      = 'يرجى اختيار المدينة';
+    return errs;
+  };
+
+  // ── Submit: upload → insert ─────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitting(true);
+    const errs = validate();
+    if (Object.keys(errs).length) { setFieldErrs(errs); return; }
+    setFieldErrs({});
 
-    const { error } = await supabase.from('products').insert({
-      producer_id:   profile.id,
-      category_id:   parseInt(form.category_id),
-      city_id:       parseInt(form.city_id),
-      name_ar:       form.name_ar.trim(),
-      price:         parseFloat(form.price),
-      is_perishable: form.is_perishable,
-      delivery_type: form.delivery_type,
-      stock:         parseInt(form.stock),
-      is_active:     true,
-    });
+    let image_url = null;
 
-    if (error) showToast(error.message, 'error');
-    else { showToast('تم نشر المنتج بنجاح ✓', 'success'); setForm(EMPTY_PRODUCT); }
+    try {
+      // Step 1: Upload image (if provided)
+      if (imageFile) {
+        setPhase('uploading');
+        const ext      = imageFile.name.split('.').pop();
+        const filePath = `${profile.user_id}/${crypto.randomUUID()}.${ext}`;
 
-    setSubmitting(false);
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, imageFile, { upsert: false, contentType: imageFile.type });
+
+        if (uploadError) {
+          showToast(`خطأ في رفع الصورة: ${uploadError.message}`, 'error');
+          return; // finally block will reset phase
+        }
+
+        // Step 2: Get the public CDN URL
+        const { data: urlData } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(filePath);
+
+        image_url = urlData.publicUrl;
+      }
+
+      // Step 3: Insert product row
+      setPhase('saving');
+      const { error: insertError } = await supabase.from('products').insert({
+        producer_id:    profile.id,
+        category_id:    parseInt(form.category_id),
+        city_id:        parseInt(form.city_id),
+        name_ar:        form.name_ar.trim(),
+        description_ar: form.description_ar.trim() || null,
+        price:          parseFloat(form.price),
+        is_perishable:  form.is_perishable,
+        delivery_type:  form.delivery_type,
+        stock:          parseInt(form.stock),
+        image_url,
+        is_active:      true,
+      });
+
+      if (insertError) {
+        console.error('SUPABASE INSERT ERROR:', {
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code,
+          fullError: insertError
+        });
+        showToast(`خطأ في حفظ المنتج: ${insertError.message}`, 'error');
+      } else {
+        showToast('تم نشر المنتج بنجاح ✓', 'success');
+        setForm(EMPTY_PRODUCT);
+        setImageFile(null);
+      }
+    } catch (unexpectedErr) {
+      // Catch-all for network failures, JS errors, etc.
+      showToast(`خطأ غير متوقع: ${unexpectedErr.message}`, 'error');
+    } finally {
+      // ALWAYS reset phase — prevents button from hanging in loading state
+      setPhase('idle');
+    }
   };
+
+  const inputErr = (key) =>
+    `${inputCls} ${fieldErrs[key] ? 'ring-2 ring-red-300 border-red-300 focus:ring-red-400' : ''}`;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -187,26 +346,72 @@ function AddProductForm({ profile, cities, categories, showToast }) {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col gap-7">
+      <form onSubmit={handleSubmit} noValidate className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col gap-7">
 
+        {/* ── Product Image ── */}
+        <section>
+          <SectionTitle icon={ImagePlus} label="صورة المنتج" />
+          <div className="mt-4">
+            <ImageDropZone
+              file={imageFile}
+              onFile={setImageFile}
+              onClear={() => setImageFile(null)}
+              disabled={submitting}
+            />
+            <p className="text-xs text-gray-400 mt-2 text-center">الصورة اختيارية — يمكنك إضافتها لاحقاً</p>
+          </div>
+        </section>
+
+        <Divider />
+
+        {/* ── Product Info ── */}
         <section>
           <SectionTitle icon={ShoppingBag} label="معلومات المنتج" />
           <div className="flex flex-col gap-4 mt-4">
+
             <Field label="اسم المنتج" required>
-              <input type="text" placeholder="مثال: مجبوس دجاج بالزعفران"
-                value={form.name_ar} onChange={(e) => set('name_ar', e.target.value)}
-                className={inputCls} required />
+              <input
+                type="text"
+                placeholder="مثال: مجبوس دجاج بالزعفران"
+                value={form.name_ar}
+                onChange={(e) => set('name_ar', e.target.value)}
+                className={inputErr('name_ar')}
+                disabled={submitting}
+              />
+              {fieldErrs.name_ar && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.name_ar}</p>}
             </Field>
+
+            <Field label="وصف المنتج">
+              <textarea
+                placeholder="صف منتجك باختصار — المكونات، الوزن، مدة الصلاحية، إلخ…"
+                value={form.description_ar}
+                onChange={(e) => set('description_ar', e.target.value)}
+                rows={3}
+                className={`${inputCls} resize-none leading-relaxed`}
+                disabled={submitting}
+              />
+            </Field>
+
             <div className="grid grid-cols-2 gap-4">
               <Field label="السعر (ريال سعودي)" required>
-                <input type="number" min="0" step="0.01" placeholder="0.00"
-                  value={form.price} onChange={(e) => set('price', e.target.value)}
-                  className={inputCls} required />
+                <input
+                  type="number" min="0" step="0.01" placeholder="0.00"
+                  value={form.price}
+                  onChange={(e) => set('price', e.target.value)}
+                  className={inputErr('price')}
+                  disabled={submitting}
+                />
+                {fieldErrs.price && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.price}</p>}
               </Field>
               <Field label="الكمية المتاحة" required>
-                <input type="number" min="0" placeholder="0"
-                  value={form.stock} onChange={(e) => set('stock', e.target.value)}
-                  className={inputCls} required />
+                <input
+                  type="number" min="0" placeholder="0"
+                  value={form.stock}
+                  onChange={(e) => set('stock', e.target.value)}
+                  className={inputErr('stock')}
+                  disabled={submitting}
+                />
+                {fieldErrs.stock && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.stock}</p>}
               </Field>
             </div>
           </div>
@@ -214,40 +419,65 @@ function AddProductForm({ profile, cities, categories, showToast }) {
 
         <Divider />
 
+        {/* ── Classification ── */}
         <section>
           <SectionTitle icon={Layers} label="التصنيف والموقع" />
           <div className="grid grid-cols-2 gap-4 mt-4">
             <Field label="الفئة" required>
-              <select value={form.category_id} onChange={(e) => set('category_id', e.target.value)} className={inputCls} required>
+              <select
+                value={form.category_id}
+                onChange={(e) => set('category_id', e.target.value)}
+                className={inputErr('category_id')}
+                disabled={submitting}
+              >
                 <option value="">— اختر الفئة —</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
               </select>
+              {fieldErrs.category_id && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.category_id}</p>}
             </Field>
             <Field label="المدينة" required>
-              <select value={form.city_id} onChange={(e) => set('city_id', e.target.value)} className={inputCls} required>
+              <select
+                value={form.city_id}
+                onChange={(e) => set('city_id', e.target.value)}
+                className={inputErr('city_id')}
+                disabled={submitting}
+              >
                 <option value="">— اختر المدينة —</option>
                 {cities.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}
               </select>
+              {fieldErrs.city_id && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.city_id}</p>}
             </Field>
           </div>
         </section>
 
         <Divider />
 
+        {/* ── Shipping ── */}
         <section>
           <SectionTitle icon={Truck} label="الشحن والتوصيل" />
           <div className="grid grid-cols-2 gap-4 mt-4">
             <Field label="نوع التوصيل" required>
-              <select value={form.delivery_type} onChange={(e) => set('delivery_type', e.target.value)} className={inputCls} required>
+              <select
+                value={form.delivery_type}
+                onChange={(e) => set('delivery_type', e.target.value)}
+                className={inputCls}
+                disabled={submitting}
+              >
                 <option value="nationwide">🚚 لجميع المناطق</option>
                 <option value="local">📍 محلي فقط</option>
               </select>
             </Field>
             <Field label="طبيعة المنتج">
               <label className={`flex items-center gap-3 cursor-pointer rounded-xl border px-4 py-2.5 h-[42px] transition-all duration-200 select-none
-                ${form.is_perishable ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
-                <input type="checkbox" checked={form.is_perishable}
-                  onChange={(e) => set('is_perishable', e.target.checked)} className="sr-only" />
+                ${form.is_perishable ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
+                ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={form.is_perishable}
+                  onChange={(e) => set('is_perishable', e.target.checked)}
+                  className="sr-only"
+                  disabled={submitting}
+                />
                 <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all duration-150
                   ${form.is_perishable ? 'bg-amber-500 border-amber-500' : 'border-gray-300 bg-white'}`}>
                   {form.is_perishable && (
@@ -262,13 +492,16 @@ function AddProductForm({ profile, cities, categories, showToast }) {
           </div>
         </section>
 
-        <button type="submit" disabled={submitting}
+        {/* ── Submit ── */}
+        <button
+          type="submit"
+          disabled={submitting}
           className="w-full bg-blue-900 hover:bg-blue-800 active:scale-[0.97] text-white font-bold py-3.5 rounded-2xl
             transition-all duration-200 flex items-center justify-center gap-2.5 text-sm
             disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-blue-900/15 mt-1"
         >
           {submitting
-            ? <><Loader2 size={16} className="animate-spin" /> جاري النشر…</>
+            ? <><Loader2 size={16} className="animate-spin" /> {PHASE_LABELS[phase]}</>
             : <><PlusCircle size={16} /> نشر المنتج</>
           }
         </button>

@@ -20,14 +20,14 @@ export default function App() {
         <CartProvider>
           <Router>
             <Routes>
-              <Route path="/"                element={<HomePage />}           />
-              <Route path="/product/:id"     element={<ProductDetailsPage />} />
-              <Route path="/cart"            element={<CartPage />}           />
-              <Route path="/login"           element={<LoginPage />}          />
-              <Route path="/register"        element={<UserRegisterPage />}   />
+              <Route path="/" element={<HomePage />} />
+              <Route path="//:id" element={<ProductDetailsPage />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<UserRegisterPage />} />
               <Route path="/register-family" element={<FamilyRegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/dashboard"       element={<SellerDashboard />}    />
+              <Route path="/dashboard" element={<SellerDashboard />} />
             </Routes>
           </Router>
         </CartProvider>
@@ -35,3 +35,4 @@ export default function App() {
     </LanguageProvider>
   );
 }
+product

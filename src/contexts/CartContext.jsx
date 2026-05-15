@@ -30,7 +30,7 @@ import {
 } from 'react';
 import { supabase } from '../supabase';
 import { useAuth } from './AuthContext';
-import { PRODUCTS } from '../products';  // flat product catalogue
+import { fetchProductById } from '../lib/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,17 +53,17 @@ function writeGuestCart(items) {
 }
 
 /**
- * Given a product_id string, return the full product object from the catalogue.
+ * Given a product_id string, return the full product object from the DB.
  * Returns null if not found (handles stale/deleted products gracefully).
  */
-function hydrateProduct(productId) {
-  return PRODUCTS.find((p) => String(p.id) === String(productId)) ?? null;
+async function hydrateProduct(productId) {
+  return await fetchProductById(productId);
 }
 
 /** Merge a DB row { product_id, quantity } into a rich cart item. */
-function dbRowToItem(row) {
-  const product = hydrateProduct(row.product_id);
-  if (!product) return null; // product was removed from catalogue
+async function dbRowToItem(row) {
+  const product = await hydrateProduct(row.product_id);
+  if (!product) return null; // product was removed
   return { ...product, id: String(product.id), qty: row.quantity };
 }
 
@@ -95,16 +95,18 @@ export function CartProvider({ children }) {
 
     if (!userId) {
       // ── GUEST mode: read from localStorage ──
-      setItems(
-        readGuestCart()
-          .map(({ product_id, quantity }) => {
-            const product = hydrateProduct(product_id);
+      (async () => {
+        const guestRows = readGuestCart();
+        const hydrated = await Promise.all(
+          guestRows.map(async ({ product_id, quantity }) => {
+            const product = await hydrateProduct(product_id);
             if (!product) return null;
             return { ...product, id: String(product.id), qty: quantity };
           })
-          .filter(Boolean),
-      );
-      setCartReady(true);
+        );
+        setItems(hydrated.filter(Boolean));
+        setCartReady(true);
+      })();
       return;
     }
 
@@ -145,7 +147,8 @@ export function CartProvider({ children }) {
         .eq('user_id', userId);
 
       if (!error && data) {
-        setItems(data.map(dbRowToItem).filter(Boolean));
+        const hydrated = await Promise.all(data.map(dbRowToItem));
+        setItems(hydrated.filter(Boolean));
       }
       setCartReady(true);
     })();
