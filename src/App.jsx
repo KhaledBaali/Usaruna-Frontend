@@ -21,7 +21,7 @@ export default function App() {
           <Router>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="//:id" element={<ProductDetailsPage />} />
+              <Route path="/product/:id" element={<ProductDetailsPage />} />
               <Route path="/cart" element={<CartPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<UserRegisterPage />} />
@@ -35,4 +35,3 @@ export default function App() {
     </LanguageProvider>
   );
 }
-product
