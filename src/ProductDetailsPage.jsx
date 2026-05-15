@@ -125,6 +125,10 @@ export default function ProductDetailsPage() {
   const [smartReplyLoading, setSmartReplyLoading] = useState({});
   const [copiedReply,       setCopiedReply]       = useState(null);
 
+  // Translate state
+  const [translatedComments,  setTranslatedComments]  = useState({});
+  const [translatingComments, setTranslatingComments] = useState({});
+
   const DELIVERY_OPTIONS = [
     { id: 'pickup',          emoji: '🏪', label: t('delivery_pickup_label'), desc: t('delivery_pickup_desc'), price: 0,  eta: t('delivery_pickup_eta')  },
     { id: 'seller_delivery', emoji: '🛵', label: t('delivery_seller_label'), desc: t('delivery_seller_desc'), price: 15, eta: t('delivery_seller_eta')  },
@@ -225,16 +229,14 @@ export default function ProductDetailsPage() {
   };
 
   const handleHelpful = (reviewId) => {
+    const isVoted = helpfulVoted.has(reviewId);
     setHelpfulVoted((prev) => {
       const next = new Set(prev);
-      if (next.has(reviewId)) {
-        next.delete(reviewId);
-      } else {
-        next.add(reviewId);
-        showToast(t('toast_thankYou'), '👍');
-      }
+      if (isVoted) next.delete(reviewId);
+      else next.add(reviewId);
       return next;
     });
+    if (!isVoted) showToast(t('toast_thankYou'), '👍');
   };
 
   const handleSmartReply = async (review) => {
@@ -268,6 +270,26 @@ export default function ProductDetailsPage() {
       setEnhancedDesc(enhanced);
     } catch { /* silently fail */ } finally {
       setEnhancingDesc(false);
+    }
+  };
+
+  const handleTranslate = async (review) => {
+    if (translatedComments[review.id]) {
+      setTranslatedComments((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
+      return;
+    }
+    const text = review.lang === 'en' ? review.comment_en : review.comment;
+    const targetLang = lang === 'ar' ? 'ar' : 'en';
+    setTranslatingComments((prev) => ({ ...prev, [review.id]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setTranslatedComments((prev) => ({ ...prev, [review.id]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingComments((prev) => ({ ...prev, [review.id]: false }));
     }
   };
 
@@ -966,16 +988,40 @@ export default function ProductDetailsPage() {
                     </div>
                   </div>
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed mb-3" dir={review.lang === 'en' ? 'ltr' : 'rtl'}>
+                <p className="text-sm text-gray-700 leading-relaxed mb-1" dir={review.lang === 'en' ? 'ltr' : 'rtl'}>
                   {review.lang === 'en' ? review.comment_en : review.comment}
                 </p>
-                <div className="flex items-center gap-4 flex-wrap">
+                {translatedComments[review.id] && (
+                  <div className="mt-1.5 mb-2 pt-2 border-t border-gray-100">
+                    <p className="text-sm text-gray-600 leading-relaxed" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                      {translatedComments[review.id]}
+                    </p>
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
+                      <Globe size={9} /> Google Translate
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-4 flex-wrap mt-2">
                   <button onClick={() => handleHelpful(review.id)}
                     className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${helpfulVoted.has(review.id) ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500'}`}
                   >
                     <ThumbsUp size={12} className={helpfulVoted.has(review.id) ? 'fill-blue-600' : ''} />
                     {t('pd_helpful')} ({review.helpful + (helpfulVoted.has(review.id) ? 1 : 0)})
                   </button>
+                  {review.lang !== lang && (
+                    <button
+                      onClick={() => handleTranslate(review)}
+                      disabled={translatingComments[review.id]}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                    >
+                      {translatingComments[review.id]
+                        ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                        : translatedComments[review.id]
+                          ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                          : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                      }
+                    </button>
+                  )}
                   <button
                     onClick={() => handleSmartReply(review)}
                     disabled={!!smartReplies[review.id] || smartReplyLoading[review.id]}
