@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ShoppingCart, ArrowLeft, ArrowRight, Shield, Globe, User,
+  ShoppingCart, ArrowLeft, ArrowRight, Shield, Globe,
   ChevronLeft, ChevronRight, MapPin, Check, Loader2, CreditCard,
   Smartphone, Banknote, Package, Lock,
 } from 'lucide-react';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
 
 // ─── DELIVERY META ────────────────────────────────────────────────────────────
@@ -43,9 +44,7 @@ function Navbar({ t, dir, isRtl, toggle, step }) {
             <Globe size={13} />
             {t('nav_langToggle')}
           </button>
-          <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
-            <User size={21} className="text-blue-900" />
-          </Link>
+          <AccountMenu />
         </div>
       </div>
 
@@ -177,8 +176,8 @@ function PaymentSelector({ t, lang, method, setMethod }) {
     {
       id: 'card',
       icon: <CreditCard size={22} className="text-blue-600" />,
-      label:  isRtl ? 'بطاقة تجريبية (Demo)' : 'Demo Card',
-      sublabel: isRtl ? 'بطاقة ائتمانية / مدى (بيانات تجريبية)' : 'Credit / Debit card (demo data)',
+      label:  isRtl ? 'بطاقة ائتمانية / مدى' : 'Credit / Debit Card',
+      sublabel: isRtl ? 'ادفع ببطاقتك الائتمانية أو بطاقة مدى' : 'Pay with your credit or debit card',
       bg: 'bg-blue-50',
       border: 'border-blue-600',
     },
@@ -231,7 +230,7 @@ function PaymentSelector({ t, lang, method, setMethod }) {
   );
 }
 
-// ─── DEMO CARD FIELDS ─────────────────────────────────────────────────────────
+// ─── CARD FIELDS ──────────────────────────────────────────────────────────────
 
 function DemoCardFields({ t, lang, card, setCard }) {
   const isRtl = lang === 'ar';
@@ -252,7 +251,7 @@ function DemoCardFields({ t, lang, card, setCard }) {
   return (
     <div className="mt-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl space-y-3">
       <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
-        {isRtl ? 'بيانات البطاقة (تجريبي فقط)' : 'Card Details (Demo Only)'}
+        {isRtl ? 'بيانات البطاقة' : 'Card Details'}
       </p>
 
       <div>
@@ -439,8 +438,8 @@ export default function CheckoutPage() {
                   <Smartphone size={20} className="shrink-0" />
                   <p className="text-xs leading-relaxed">
                     {isRtl
-                      ? 'سيتم توجيهك إلى Apple Pay عند تأكيد الطلب. (بيئة تجريبية)'
-                      : 'You will be redirected to Apple Pay on confirmation. (Demo environment)'}
+                      ? 'سيتم توجيهك إلى Apple Pay عند تأكيد الطلب.'
+                      : 'You will be redirected to Apple Pay on confirmation.'}
                   </p>
                 </div>
               )}

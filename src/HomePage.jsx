@@ -1,21 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ShoppingCart, Search, User, Heart, Star, Menu, X,
+  ShoppingCart, Search, Heart, Star, Menu, X,
   MapPin, Phone, Mail, ChevronLeft, ChevronRight, ChevronDown,
   Package, Shield, Truck, Award, Globe, Share2, AtSign, Clock,
 } from 'lucide-react';
 // Mock data removed in favor of live DB
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
-import { useAuth } from './contexts/AuthContext';
 import { fetchProducts } from './lib/api';
 import { supabase } from './supabase';
+import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
-
-// ─── CATEGORY DISPLAY MAPS ────────────────────────────────────────────────────
-// English labels are a UI concern not stored in the DB schema
-const CATEGORY_EN = { food: 'Main Dishes', sweets: 'Desserts', frozen: 'Frozen', spices: 'Spices', crafts: 'Handmade' };
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
@@ -173,7 +169,6 @@ function GroupHeader({ icon: Icon, title, subtitle, color }) {
 export default function HomePage() {
   const { lang, dir, toggle, t } = useLang();
   const { addItem, totalCount } = useCart();
-  const { user, logout, displayName } = useAuth();
 
   const [searchQuery,    setSearchQuery]    = useState('');
   const [menuOpen,       setMenuOpen]       = useState(false);
@@ -204,10 +199,8 @@ export default function HomePage() {
           { data: categoriesData, error: categoriesError },
         ] = await Promise.all([
           supabase.from('cities').select('id, name_ar, name_en, slug').order('id'),
-          supabase.from('categories').select('id, name_ar, slug').order('id'),
+          supabase.from('categories').select('id, name_ar, name_en, slug').order('id'),
         ]);
-
-        console.log("Supabase Data:", { citiesData, categoriesData, error: citiesError || categoriesError });
 
         if (citiesError)     console.error('Failed to fetch cities:', citiesError.message);
         else                 setCities(citiesData ?? []);
@@ -237,7 +230,7 @@ export default function HomePage() {
     { slug: 'fast', name: t('cat_fastDelivery'), emoji: '⚡', special: true  },
     ...dbCategories.map((cat) => ({
       slug:    cat.slug,
-      name:    lang === 'ar' ? cat.name_ar : (CATEGORY_EN[cat.slug] ?? cat.name_ar),
+      name:    lang === 'ar' ? cat.name_ar : (cat.name_en ?? cat.name_ar),
       emoji:   getCategoryEmoji(cat.slug),
       special: false,
     })),
@@ -334,24 +327,7 @@ export default function HomePage() {
                 </span>
               )}
             </Link>
-            {user ? (
-              <div className="hidden sm:flex items-center gap-2">
-                <span className="text-sm font-bold text-blue-900 flex items-center gap-1.5">
-                  <User size={16} className="text-blue-700" />
-                  {displayName}
-                </span>
-                <button
-                  onClick={logout}
-                  className="text-xs font-bold text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 bg-white rounded-xl px-3 py-1.5 transition-colors"
-                >
-                  {t('nav_logout')}
-                </button>
-              </div>
-            ) : (
-              <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
-                <User size={21} className="text-blue-900" />
-              </Link>
-            )}
+            <AccountMenu />
             <button
               className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors sm:hidden"
               onClick={() => setMenuOpen(!menuOpen)}

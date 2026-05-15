@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart, Trash2, Plus, Minus, ArrowLeft, ArrowRight,
-  Shield, Globe, MapPin, User, ChevronLeft, ChevronRight,
+  Shield, Globe, MapPin, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
 
 // ─── NAVBAR ───────────────────────────────────────────────────────────────────
@@ -41,9 +42,7 @@ function Navbar({ t, dir, isRtl, toggle, totalCount }) {
             <Globe size={13} />
             {t('nav_langToggle')}
           </button>
-          <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
-            <User size={21} className="text-blue-900" />
-          </Link>
+          <AccountMenu />
         </div>
       </div>
     </header>
@@ -189,8 +188,9 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty }) {
 
 // ─── ORDER SUMMARY ────────────────────────────────────────────────────────────
 
-function OrderSummary({ t, subtotal, isRtl }) {
+function OrderSummary({ t, lang, subtotal, deliveryTotal, isRtl }) {
   const hasItems = subtotal > 0;
+  const grandTotal = subtotal + deliveryTotal;
 
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 sticky top-24">
@@ -205,7 +205,15 @@ function OrderSummary({ t, subtotal, isRtl }) {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-gray-500">{t('cart_delivery')}</span>
-          <span className="text-gray-400 text-xs">{t('cart_deliveryNote')}</span>
+          {deliveryTotal === 0 ? (
+            <span className="text-emerald-600 font-bold text-xs">
+              {lang === 'ar' ? 'مجاناً' : 'Free'}
+            </span>
+          ) : (
+            <span className="font-bold text-gray-800">
+              {deliveryTotal.toFixed(0)} <span className="font-semibold">{t('cart_sar')}</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -213,7 +221,7 @@ function OrderSummary({ t, subtotal, isRtl }) {
         <div className="flex items-center justify-between">
           <span className="font-extrabold text-gray-800">{t('cart_total')}</span>
           <span className="text-xl font-extrabold text-blue-900">
-            {subtotal.toFixed(0)} <span className="text-base font-bold">{t('cart_sar')}</span>
+            {grandTotal.toFixed(0)} <span className="text-base font-bold">{t('cart_sar')}</span>
           </span>
         </div>
       </div>
@@ -286,6 +294,7 @@ export default function CartPage() {
   const { lang, dir, toggle, t } = useLang();
   const { items, removeItem, updateQty, totalCount, subtotal } = useCart();
   const isRtl = dir === 'rtl';
+  const deliveryTotal = items.reduce((s, i) => s + (i.deliveryPrice ?? 0), 0);
 
   return (
     <div dir={dir} className={`min-h-screen bg-gray-50 font-sans ${isRtl ? 'text-right' : 'text-left'}`}>
@@ -324,7 +333,7 @@ export default function CartPage() {
 
             {/* Summary — desktop sidebar */}
             <div className="hidden lg:block">
-              <OrderSummary t={t} subtotal={subtotal} isRtl={isRtl} />
+              <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} />
             </div>
           </div>
         )}
@@ -332,7 +341,7 @@ export default function CartPage() {
         {/* Mobile order summary (shown below items) */}
         {items.length > 0 && (
           <div className="lg:hidden mt-6">
-            <OrderSummary t={t} subtotal={subtotal} isRtl={isRtl} />
+            <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} />
           </div>
         )}
       </main>

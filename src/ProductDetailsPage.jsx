@@ -4,16 +4,16 @@ import {
   ShoppingCart, Star, Heart, MapPin, Clock, Package,
   ChevronRight, ChevronLeft, Minus, Plus, Share2,
   Shield, Truck, Award, Phone, ThumbsUp, CheckCircle,
-  Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
+  Globe, AtSign, Mail, Filter, XCircle, RotateCcw,
   Wand2, Copy, Check, Loader2,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
 // Products removed for strict live DB tracking
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
-import { useAuth } from './contexts/AuthContext';
 import { fetchProductById, fetchReviews, submitReview } from './lib/api';
 import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
+import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -71,7 +71,6 @@ export default function ProductDetailsPage() {
   const navigate         = useNavigate();
   const { lang, dir, toggle, t } = useLang();
   const { addItem, totalCount } = useCart();
-  const { user, logout, displayName } = useAuth();
 
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -386,21 +385,7 @@ export default function ProductDetailsPage() {
                 </span>
               )}
             </Link>
-            {user ? (
-              <div className="hidden sm:flex items-center gap-2">
-                <span className="text-sm font-bold text-blue-900 flex items-center gap-1.5">
-                  <User size={16} className="text-blue-700" />
-                  {displayName}
-                </span>
-                <button onClick={logout} className="text-xs font-bold text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 bg-white rounded-xl px-3 py-1.5 transition-colors">
-                  {t('nav_logout')}
-                </button>
-              </div>
-            ) : (
-              <Link to="/login" className="p-2.5 rounded-2xl hover:bg-gray-100 transition-colors hidden sm:flex" aria-label={t('nav_account')}>
-                <User size={21} className="text-blue-900" />
-              </Link>
-            )}
+            <AccountMenu />
           </div>
         </div>
       </header>
@@ -527,24 +512,29 @@ export default function ProductDetailsPage() {
             )}
 
             {/* Price */}
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <span className="text-3xl font-extrabold text-blue-900 leading-none">
-                {effectivePrice}
-                <span className="text-xl font-bold"> {t('card_currency')}</span>
-              </span>
-              {product.originalPrice && (
-                <span className="text-base text-gray-400 line-through">{product.originalPrice} {t('card_currency')}</span>
-              )}
-              {savings && (
-                <span className="bg-red-50 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full border border-red-100">
-                  {t('pd_save')} {savings} {t('card_currency')}
+            <div>
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <span className="text-3xl font-extrabold text-blue-900 leading-none">
+                  {effectivePrice}
+                  <span className="text-xl font-bold"> {t('card_currency')}</span>
                 </span>
-              )}
-              {sizeAdj !== 0 && (
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${sizeAdj > 0 ? 'text-blue-600 bg-blue-50 border-blue-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'}`}>
-                  {sizeAdj > 0 ? `+${sizeAdj}` : sizeAdj} {t('card_currency')} ({lang === 'ar' ? 'الحجم' : 'size'})
-                </span>
-              )}
+                {product.originalPrice && (
+                  <span className="text-base text-gray-400 line-through">{product.originalPrice} {t('card_currency')}</span>
+                )}
+                {savings && (
+                  <span className="bg-red-50 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full border border-red-100">
+                    {t('pd_save')} {savings} {t('card_currency')}
+                  </span>
+                )}
+                {sizeAdj !== 0 && (
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${sizeAdj > 0 ? 'text-blue-600 bg-blue-50 border-blue-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'}`}>
+                    {sizeAdj > 0 ? `+${sizeAdj}` : sizeAdj} {t('card_currency')} ({lang === 'ar' ? 'الحجم' : 'size'})
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {lang === 'ar' ? 'شامل ضريبة القيمة المضافة' : 'VAT included'}
+              </p>
             </div>
 
             {/* Size selector */}
