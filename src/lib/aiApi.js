@@ -1,4 +1,4 @@
-const AI_BASE = 'http://127.0.0.1:8000';
+const AI_BASE = 'https://usaruna-ai.onrender.com';
 
 export async function summarizeReviews(reviews, lang = 'en') {
   const res = await fetch(`${AI_BASE}/summarize`, {
