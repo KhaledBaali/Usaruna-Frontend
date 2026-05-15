@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, Search, Heart, Star, Menu, X,
   MapPin, Phone, Mail, ChevronLeft, ChevronRight, ChevronDown,
-  Package, Shield, Truck, Award, Globe, Share2, AtSign, Clock,
+  Package, Shield, Truck, Award, Globe, Share2, AtSign, Clock, Zap,
 } from 'lucide-react';
 // Mock data removed in favor of live DB
 import { useLang } from './contexts/LanguageContext';
@@ -32,7 +32,7 @@ function DeliveryTag({ isPerishable }) {
   if (isPerishable) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 w-fit">
-        <Clock size={11} className="shrink-0" />
+        <Zap size={11} className="shrink-0" />
         {t('tag_fastDelivery')}
       </span>
     );
@@ -173,7 +173,7 @@ export default function HomePage() {
   const [searchQuery,    setSearchQuery]    = useState('');
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [currentCityAr,  setCurrentCityAr]  = useState('جدة');
+  const [currentCityAr,  setCurrentCityAr]  = useState('الرياض');
   const [locationOpen,   setLocationOpen]   = useState(false);
   // Start empty — real data comes from Supabase; mock PRODUCTS is only a fallback inside api.js
   const [products,        setProducts]        = useState([]);

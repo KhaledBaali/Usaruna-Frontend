@@ -4,8 +4,8 @@ import {
   ShoppingCart, Star, Heart, MapPin, Clock, Package,
   ChevronRight, ChevronLeft, Minus, Plus, Share2,
   Shield, Truck, Award, Phone, ThumbsUp, CheckCircle,
-  Globe, AtSign, Mail, Filter, XCircle, RotateCcw,
-  Wand2, Copy, Check, Loader2,
+  Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
+  Wand2, Copy, Check, Loader2, Zap,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
 // Products removed for strict live DB tracking
@@ -34,7 +34,7 @@ function DeliveryTag({ isPerishable }) {
   const { t } = useLang();
   return isPerishable ? (
     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 w-fit">
-      <Clock size={13} className="shrink-0" />{t('tag_fastDelivery')}
+      <Zap size={13} className="shrink-0" />{t('tag_fastDelivery')}
     </span>
   ) : (
     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 w-fit">

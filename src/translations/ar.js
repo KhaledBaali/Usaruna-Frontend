@@ -101,7 +101,7 @@ export default {
   card_wishlist:    'إضافة للمفضلة',
 
   // ─── Delivery tags ───────────────────────────────────────────────────────────
-  tag_fastDelivery:   'توصيل سريع خلال 1-2 ساعة',
+  tag_fastDelivery:   'طازج - توصيل سريع',
   tag_nationwide:     'شحن لجميع مدن المملكة (24-48 ساعة)',
 
   // ─── Product details — nav & breadcrumb ──────────────────────────────────────
