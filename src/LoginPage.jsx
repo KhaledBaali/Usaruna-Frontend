@@ -248,14 +248,11 @@ export default function LoginPage() {
         if (authError) throw authError;
         authData = data;
       }
-      // Query the DB for role — never trust JWT metadata for routing decisions.
-      const { data: profileData } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', authData.user.id)
-        .single();
-
-      const role = profileData?.role;
+      // Use user_metadata.role as a fast routing hint.
+      // SellerDashboard is the authoritative guard via DB query on mount.
+      // Cart sync (guest → DB) happens automatically in CartContext when
+      // the auth state transitions from null → userId.
+      const role = authData.user?.user_metadata?.role;
       setSuccess(true);
       navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {

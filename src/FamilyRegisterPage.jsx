@@ -211,7 +211,7 @@ export default function FamilyRegisterPage() {
     setFieldErrors({});
     setIsLoading(true);
     try {
-      // ── Step 1: Auth sign-up — only the 3 fields the DB trigger expects ──
+      // ── Step 1: Auth sign-up ─────────────────────────────────────────────────
       const { data, error: authError } = await supabase.auth.signUp({
         email:    form.email.trim(),
         password: form.password,
@@ -225,7 +225,14 @@ export default function FamilyRegisterPage() {
       });
       if (authError) throw authError;
 
-      // ── Step 2: Insert producer profile using the returned user ID ────────
+      // ── Step 2: Insert producer profile row ──────────────────────────────────
+      // This is the authoritative record that grants dashboard access.
+      // If this fails (e.g. RLS INSERT policy missing), the auth user still
+      // exists but has no profile → they'll be redirected out of /dashboard.
+      // The INSERT RLS policy "producers can insert own profile" must exist:
+      //   CREATE POLICY "producers can insert own profile"
+      //   ON public.producer_profiles FOR INSERT TO authenticated
+      //   WITH CHECK (auth.uid() = user_id);
       const { error: profileError } = await supabase
         .from('producer_profiles')
         .insert({
@@ -235,16 +242,24 @@ export default function FamilyRegisterPage() {
           category_id:      parseInt(form.category),
           description_ar:   form.description.trim() || null,
         });
-      if (profileError) throw profileError;
+
+      if (profileError) {
+        // Auth succeeded but profile insert failed — surface a specific error.
+        // The user now has an auth account; direct them to contact support
+        // rather than letting them retry (which would hit "already registered").
+        throw new Error(
+          `حساب المصادقة تم إنشاؤه لكن فشل إنشاء ملف المتجر: ${profileError.message}. ` +
+          `يرجى التواصل مع الدعم بالبريد ${form.email.trim()}`
+        );
+      }
 
       if (data.session) {
-        // Force a fresh JWT so the dashboard's getSession() sees the producer role immediately.
-        // Without this, the newly-issued token may not yet reflect the metadata in the local store.
+        // Refresh JWT so the dashboard's getSession() sees the updated metadata.
         await supabase.auth.refreshSession();
         setSuccess(true);
         setTimeout(() => navigate('/dashboard'), 1500);
       } else {
-        // Email confirmation required — user must verify before accessing the dashboard.
+        // Email confirmation required.
         setSuccess(true);
       }
     } catch (err) {
@@ -257,6 +272,7 @@ export default function FamilyRegisterPage() {
       setIsLoading(false);
     }
   };
+
 
   const inputCls = (key) =>
     `w-full bg-gray-100 rounded-2xl py-3 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:bg-white transition-all duration-200

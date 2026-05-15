@@ -14,9 +14,12 @@ export function AuthProvider({ children }) {
       setLoadingAuth(false);
     });
 
-    // Keep user in sync with any subsequent auth events (sign-in, sign-out, token refresh)
+    // Keep user in sync with any subsequent auth events (sign-in, sign-out, token refresh).
+    // Also flip loadingAuth here — onAuthStateChange fires on sign-in before getSession()
+    // resolves, so this prevents a brief window where session is ready but loading is still true.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setLoadingAuth(false);
     });
 
     return () => subscription.unsubscribe();

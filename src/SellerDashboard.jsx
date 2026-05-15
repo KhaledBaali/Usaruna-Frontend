@@ -296,11 +296,13 @@ export default function SellerDashboard() {
   // isAuthorized only becomes true when the DB confirms a producer_profiles row exists
   const [isChecking,   setIsChecking]   = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [dbError,      setDbError]      = useState(null);  // set when DB query hard-fails
   const [profile,      setProfile]      = useState(null);
   const [cities,       setCities]       = useState([]);
   const [categories,   setCategories]   = useState([]);
   const [activeTab,    setActiveTab]    = useState('overview');
   const [toast,        setToast]        = useState(null);
+
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -318,20 +320,28 @@ export default function SellerDashboard() {
         return;
       }
 
-      // Step 2: DB is the ONLY authorization check — no metadata, no role fields.
+      // Step 2: DB is the ONLY authorization check — no metadata fallback, no mock data.
       // A row in producer_profiles = this user is a producer. Full stop.
+      // RLS policy "producers can read own profile" must be present (USING auth.uid() = user_id).
       const { data: profileData, error: profileError } = await supabase
         .from('producer_profiles')
         .select('*')
         .eq('user_id', session.user.id)
         .maybeSingle();
 
-      if (profileError || !profileData) {
+      if (profileError) {
+        // Surface the real DB error — do NOT fabricate data.
+        if (!cancelled) setDbError(profileError.message);
+        return;
+      }
+
+      if (!profileData) {
+        // No row = this account is not a producer.
         if (!cancelled) navigate('/');
         return;
       }
 
-      // Step 3: Authorized — now fetch lookup tables for the UI.
+      // Step 3: Authorized — fetch lookup tables for the UI.
       const [{ data: citiesData }, { data: catsData }] = await Promise.all([
         supabase.from('cities').select('id, name_ar').order('id'),
         supabase.from('categories').select('id, name_ar').order('id'),
@@ -351,11 +361,27 @@ export default function SellerDashboard() {
     return () => { cancelled = true; };
   }, [navigate]);
 
-  // While the DB query is in flight, render nothing but this — no navigate, no flash
+  // Loading gate — blocks ALL rendering until the DB query resolves.
   if (isChecking) {
+    if (dbError) {
+      return (
+        <div className="flex h-screen items-center justify-center flex-col gap-4 text-center px-6">
+          <AlertCircle size={40} className="text-red-400" />
+          <p className="text-lg font-bold text-gray-700">تعذّر تحميل بيانات المتجر</p>
+          <p className="text-sm text-gray-400 max-w-sm">{dbError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-5 py-2.5 bg-blue-900 text-white text-sm font-bold rounded-xl hover:bg-blue-800 transition-colors"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      );
+    }
     return (
-      <div className="flex h-screen items-center justify-center">
-        Loading...
+      <div className="flex h-screen items-center justify-center gap-3 text-gray-400">
+        <Loader2 size={22} className="animate-spin text-blue-500" />
+        <span className="text-sm font-medium">جاري التحقق من صلاحيات الوصول…</span>
       </div>
     );
   }
