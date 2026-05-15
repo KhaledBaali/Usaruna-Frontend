@@ -289,16 +289,20 @@ const NAV_ITEMS = [
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function SellerDashboard() {
-  const navigate                   = useNavigate();
-  const { logout, displayName }    = useAuth(); // Only for UI display + logout action
+  const navigate                = useNavigate();
+  const { logout, displayName } = useAuth(); // UI display + logout only
 
-  // isLoadingAuth stays true until getSession() + DB fetch both resolve
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [profile,    setProfile]    = useState(null);
-  const [cities,     setCities]     = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [activeTab,  setActiveTab]  = useState('overview');
-  const [toast,      setToast]      = useState(null);
+  // isChecking blocks ALL rendering until the DB query resolves
+  // isAuthorized only becomes true when the DB confirms a producer_profiles row exists
+  const [isChecking,   setIsChecking]   = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [dbError,      setDbError]      = useState(null);  // set when DB query hard-fails
+  const [profile,      setProfile]      = useState(null);
+  const [cities,       setCities]       = useState([]);
+  const [categories,   setCategories]   = useState([]);
+  const [activeTab,    setActiveTab]    = useState('overview');
+  const [toast,        setToast]        = useState(null);
+
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -309,44 +313,47 @@ export default function SellerDashboard() {
     let cancelled = false;
 
     const run = async () => {
-      // Step 1: Await a fresh session — never check role from stale context state
+      // Step 1: Read the local session — instant, no network round-trip.
       const { data: { session } } = await supabase.auth.getSession();
-
       if (!session?.user) {
-        console.log('[Dashboard] Redirecting to /login — no session');
         if (!cancelled) navigate('/login');
         return;
       }
 
-      const role = session.user.user_metadata?.role;
-      if (role !== 'producer') {
-        console.log(`[Dashboard] Redirecting to / — role is "${role ?? 'undefined'}"`);
-        if (!cancelled) navigate('/');
+      // Step 2: DB is the ONLY authorization check — no metadata fallback, no mock data.
+      // A row in producer_profiles = this user is a producer. Full stop.
+      // RLS policy "producers can read own profile" must be present (USING auth.uid() = user_id).
+      const { data: profileData, error: profileError } = await supabase
+        .from('producer_profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        // Surface the real DB error — do NOT fabricate data.
+        if (!cancelled) setDbError(profileError.message);
         return;
       }
-
-      // Step 2: Session + role confirmed — fetch profile and lookup tables in parallel
-      const [
-        { data: citiesData },
-        { data: catsData },
-        { data: profileData },
-      ] = await Promise.all([
-        supabase.from('cities').select('id, name_ar').order('id'),
-        supabase.from('categories').select('id, name_ar').order('id'),
-        supabase.from('producer_profiles').select('*').eq('user_id', session.user.id).maybeSingle(),
-      ]);
 
       if (!profileData) {
-        console.log(`[Dashboard] Redirecting to / — no producer_profile for user ${session.user.id}`);
+        // No row = this account is not a producer.
         if (!cancelled) navigate('/');
         return;
       }
 
+      // Step 3: Authorized — fetch lookup tables for the UI.
+      const [{ data: citiesData }, { data: catsData }] = await Promise.all([
+        supabase.from('cities').select('id, name_ar').order('id'),
+        supabase.from('categories').select('id, name_ar').order('id'),
+      ]);
+
+      // Step 4: All data ready — unblock the render.
       if (!cancelled) {
         setCities(citiesData   ?? []);
         setCategories(catsData ?? []);
         setProfile(profileData);
-        setIsLoadingAuth(false); // Unblock render only after everything is confirmed
+        setIsAuthorized(true);
+        setIsChecking(false);
       }
     };
 
@@ -354,16 +361,32 @@ export default function SellerDashboard() {
     return () => { cancelled = true; };
   }, [navigate]);
 
-  // No navigate() fires while isLoadingAuth is true — this is the strict gate
-  if (isLoadingAuth) {
+  // Loading gate — blocks ALL rendering until the DB query resolves.
+  if (isChecking) {
+    if (dbError) {
+      return (
+        <div className="flex h-screen items-center justify-center flex-col gap-4 text-center px-6">
+          <AlertCircle size={40} className="text-red-400" />
+          <p className="text-lg font-bold text-gray-700">تعذّر تحميل بيانات المتجر</p>
+          <p className="text-sm text-gray-400 max-w-sm">{dbError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-5 py-2.5 bg-blue-900 text-white text-sm font-bold rounded-xl hover:bg-blue-800 transition-colors"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      );
+    }
     return (
-      <div className="flex justify-center items-center h-screen">
-        Loading...
+      <div className="flex h-screen items-center justify-center gap-3 text-gray-400">
+        <Loader2 size={22} className="animate-spin text-blue-500" />
+        <span className="text-sm font-medium">جاري التحقق من صلاحيات الوصول…</span>
       </div>
     );
   }
 
-  if (!profile) return null; // Safety net during in-flight redirect
+  if (!isAuthorized || !profile) return null; // safety net for in-flight redirects
 
   const profileCity = cities.find((c) => c.id === profile.city_id);
 

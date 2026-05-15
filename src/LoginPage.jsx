@@ -248,10 +248,12 @@ export default function LoginPage() {
         if (authError) throw authError;
         authData = data;
       }
+      // Use user_metadata.role as a fast routing hint.
+      // SellerDashboard is the authoritative guard via DB query on mount.
+      // Cart sync (guest → DB) happens automatically in CartContext when
+      // the auth state transitions from null → userId.
+      const role = authData.user?.user_metadata?.role;
       setSuccess(true);
-      console.log('User Metadata:', authData?.user?.user_metadata);
-      const role = authData?.user?.user_metadata?.role;
-      // Navigate immediately — session is confirmed, no delay needed
       navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {
       setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);
