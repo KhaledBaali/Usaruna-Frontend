@@ -4,8 +4,8 @@ import {
   Store, Package, MapPin, User, LogOut,
   CheckCircle, AlertCircle, Loader2, PlusCircle,
   ShoppingBag, Layers, Truck, Archive, ChevronRight,
-  Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, FileImage, X, Upload, Trash2, Star,
-  Printer, Plus, Minus, Globe, ToggleLeft, ToggleRight,
+  Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
+  Printer, Plus, Globe, Pencil, Zap,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -75,6 +75,19 @@ const T = {
     mp_title: 'منتجاتي', mp_empty: 'لا توجد منتجات بعد',
     mp_emptyDesc: 'ابدأ بإضافة أول منتج لمتجرك',
     mp_active: 'نشط', mp_inactive: 'غير نشط', mp_sar: 'ر.س',
+    mp_edit: 'تعديل',
+    mp_editTitle: 'تعديل المنتج',
+    mp_editPrice: 'السعر (ريال سعودي)',
+    mp_editStock: 'الكمية المتاحة',
+    mp_editDelivery: 'نوع التوصيل',
+    mp_editSave: 'حفظ التغييرات', mp_editSaving: 'جاري الحفظ…',
+    mp_editSuccess: 'تم تحديث المنتج ✓', mp_editError: 'خطأ في التحديث: ',
+    mp_cancel: 'إلغاء',
+    ap_del_fast: '⚡ توصيل سريع (خلال ساعة-ساعتين)',
+    ap_del_fast_sub: 'حصراً لنفس المدينة — يظهر فقط لعملاء مدينتك',
+    ap_del_ship: '🚚 شحن لجميع المدن',
+    ap_del_ship_sub: 'يظهر لجميع العملاء بغض النظر عن مدينتهم',
+
 
     st_title: 'إعدادات المتجر', st_info: 'معلومات المتجر',
     st_nameAr: 'اسم المتجر ', st_city: 'المدينة',
@@ -153,6 +166,19 @@ const T = {
     mp_title: 'My Products', mp_empty: 'No products yet',
     mp_emptyDesc: 'Start by adding your first product',
     mp_active: 'Active', mp_inactive: 'Inactive', mp_sar: 'SAR',
+    mp_edit: 'Edit',
+    mp_editTitle: 'Edit Product',
+    mp_editPrice: 'Price (SAR)',
+    mp_editStock: 'Available Stock',
+    mp_editDelivery: 'Delivery Type',
+    mp_editSave: 'Save Changes', mp_editSaving: 'Saving…',
+    mp_editSuccess: 'Product updated ✓', mp_editError: 'Update error: ',
+    mp_cancel: 'Cancel',
+    ap_del_fast: '⚡ Fast Delivery (within 1-2 hours)',
+    ap_del_fast_sub: 'Same city only — visible only to customers in your city',
+    ap_del_ship: '🚚 Nationwide Shipping',
+    ap_del_ship_sub: 'Visible to all customers regardless of their city',
+
 
     st_title: 'Store Settings', st_info: 'Store Information',
     st_nameAr: 'Store Name', st_city: 'City',
@@ -491,16 +517,172 @@ function SalesTab({ profile, t }) {
   );
 }
 
+// ─── Edit Product Modal ─────────────────────────────────────────────────────────
+
+function EditProductModal({ product, t, onClose, onSaved, showToast }) {
+  const [price,        setPrice]       = useState(String(product.price ?? ''));
+  const [stock,        setStock]       = useState(String(product.stock ?? ''));
+  const [isPerishable, setIsPerishable] = useState(product.is_perishable ?? false);
+  const [saving,       setSaving]      = useState(false);
+
+  // Derive delivery type from is_perishable for display
+  const deliveryLabel = isPerishable ? t.ap_del_fast : t.ap_del_ship;
+
+  const handleSave = async () => {
+    const priceVal = parseFloat(price);
+    const stockVal = parseInt(stock);
+    if (isNaN(priceVal) || priceVal < 0) { showToast('يرجى إدخال سعر صحيح', 'error'); return; }
+    if (isNaN(stockVal) || stockVal < 0) { showToast('يرجى إدخال كمية صحيحة', 'error'); return; }
+
+    setSaving(true);
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        price:         priceVal,
+        stock:         stockVal,
+        is_perishable: isPerishable,
+        delivery_type: isPerishable ? 'local' : 'nationwide',
+      })
+      .eq('id', product.id)
+      .select('id, price, stock, is_perishable, delivery_type')
+      .single();
+
+    setSaving(false);
+    if (error) {
+      console.error('[EditProduct] Update failed:', error);
+      showToast(`${t.mp_editError}${error.message}`, 'error');
+    } else {
+      showToast(t.mp_editSuccess, 'success');
+      onSaved(data);
+      onClose();
+    }
+  };
+
+  const inputCls = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all';
+
+  return (
+    /* backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-[fadeInUp_0.2s_ease]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-extrabold text-gray-800">{t.mp_editTitle}</h2>
+            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[240px]">{product.name_ar}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 flex flex-col gap-5">
+
+          {/* Price + Stock */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.mp_editPrice}</label>
+              <input type="number" min="0" step="0.01" value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className={inputCls} disabled={saving} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.mp_editStock}</label>
+              <input type="number" min="0" step="1" value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                className={inputCls} disabled={saving} />
+            </div>
+          </div>
+
+          {/* Delivery Type — radio cards */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 mb-2">{t.mp_editDelivery}</label>
+            <div className="flex flex-col gap-2">
+              {/* Fast delivery */}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setIsPerishable(true)}
+                className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
+                  ${isPerishable
+                    ? 'border-amber-400 bg-amber-50'
+                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+              >
+                <Zap size={18} className={`mt-0.5 shrink-0 ${isPerishable ? 'text-amber-500' : 'text-gray-400'}`} />
+                <div>
+                  <p className={`text-sm font-bold ${isPerishable ? 'text-amber-800' : 'text-gray-700'}`}>
+                    {t.ap_del_fast}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_fast_sub}</p>
+                </div>
+                {isPerishable && (
+                  <CheckCircle size={16} className="ms-auto mt-0.5 shrink-0 text-amber-500" />
+                )}
+              </button>
+
+              {/* Nationwide shipping */}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setIsPerishable(false)}
+                className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
+                  ${!isPerishable
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+              >
+                <Truck size={18} className={`mt-0.5 shrink-0 ${!isPerishable ? 'text-blue-500' : 'text-gray-400'}`} />
+                <div>
+                  <p className={`text-sm font-bold ${!isPerishable ? 'text-blue-800' : 'text-gray-700'}`}>
+                    {t.ap_del_ship}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_ship_sub}</p>
+                </div>
+                {!isPerishable && (
+                  <CheckCircle size={16} className="ms-auto mt-0.5 shrink-0 text-blue-500" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-3 px-6 pb-6">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            {t.mp_cancel}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-2xl bg-blue-900 text-white text-sm font-bold hover:bg-blue-800 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? <><Loader2 size={14} className="animate-spin" />{t.mp_editSaving}</> : t.mp_editSave}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── My Products tab ───────────────────────────────────────────────────────────
 
-function MyProductsTab({ profile, t }) {
-  const [products, setProducts] = useState([]);
-  const [loading,  setLoading]  = useState(true);
+function MyProductsTab({ profile, t, showToast }) {
+  const [products,    setProducts]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [editTarget,  setEditTarget]  = useState(null);   // product being edited
 
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name_ar, name_en, price, stock, is_active, image_url, is_perishable')
+      .select('id, name_ar, name_en, price, stock, is_active, image_url, is_perishable, delivery_type')
       .eq('producer_id', profile.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -519,6 +701,13 @@ function MyProductsTab({ profile, t }) {
         prev.map((p) => p.id === product.id ? { ...p, is_active: !p.is_active } : p)
       );
     }
+  };
+
+  // Called by EditProductModal on successful save — live-patch the list row
+  const handleSaved = (updated) => {
+    setProducts((prev) =>
+      prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p)
+    );
   };
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-blue-400" /></div>;
@@ -541,18 +730,44 @@ function MyProductsTab({ profile, t }) {
       <div className="flex flex-col gap-3">
         {products.map((p) => (
           <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+            {/* Thumbnail */}
             <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
               {p.image_url
                 ? <img src={p.image_url} alt={p.name_ar} className="w-full h-full object-cover" />
                 : <Package size={22} className="text-gray-300" />
               }
             </div>
+
+            {/* Info */}
             <div className="flex-1 min-w-0">
               <p className="font-bold text-gray-800 text-sm truncate">
                 {t.dir === 'rtl' ? p.name_ar : (p.name_en || p.name_ar)}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">{p.price} {t.mp_sar} · {p.stock} {t.dir === 'rtl' ? 'وحدة' : 'units'}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {p.price} {t.mp_sar} · {p.stock} {t.dir === 'rtl' ? 'وحدة' : 'units'}
+              </p>
+              {/* Delivery badge */}
+              <span className={`inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full
+                ${p.is_perishable
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-blue-100 text-blue-700'}`}
+              >
+                {p.is_perishable
+                  ? <><Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast Delivery'}</>
+                  : <><Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}</>
+                }
+              </span>
             </div>
+
+            {/* Edit button */}
+            <button
+              onClick={() => setEditTarget(p)}
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
+            >
+              <Pencil size={11} />{t.mp_edit}
+            </button>
+
+            {/* Active toggle */}
             <button
               onClick={() => toggleActive(p)}
               className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition-colors
@@ -566,9 +781,21 @@ function MyProductsTab({ profile, t }) {
           </div>
         ))}
       </div>
+
+      {/* Edit modal */}
+      {editTarget && (
+        <EditProductModal
+          product={editTarget}
+          t={t}
+          showToast={showToast}
+          onClose={() => setEditTarget(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }
+
 
 // ─── Image Upload Drop Zone ─────────────────────────────────────────────────────
 
@@ -874,44 +1101,63 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
         <Divider />
 
-        {/* Shipping */}
+        {/* Delivery Type — radio cards */}
         <section>
           <SectionTitle icon={Truck} label={t.ap_shipping} />
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <Field label={t.ap_deliveryType}>
-              <select value={form.is_perishable ? 'local' : form.delivery_type}
-                onChange={(e) => set('delivery_type', e.target.value)}
-                className={inputCls} disabled={submitting || form.is_perishable}>
-                <option value="nationwide">{t.ap_nationwide}</option>
-                <option value="local">{t.ap_local}</option>
-              </select>
-            </Field>
-            <Field label={t.ap_nature}>
-              <label className={`flex items-center gap-3 cursor-pointer rounded-xl border px-4 py-2.5 h-[42px] transition-all duration-200 select-none
-                ${form.is_perishable ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
-                ${submitting ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <input type="checkbox" checked={form.is_perishable}
-                  onChange={(e) => set('is_perishable', e.target.checked)}
-                  className="sr-only" disabled={submitting} />
-                <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all duration-150
-                  ${form.is_perishable ? 'bg-amber-500 border-amber-500' : 'border-gray-300 bg-white'}`}>
-                  {form.is_perishable && (
-                    <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </span>
-                <span className="text-sm font-medium text-gray-700">{t.ap_perishable}</span>
-              </label>
-            </Field>
+          <div className="flex flex-col gap-3 mt-4">
+
+            {/* ⚡ Fast Delivery card */}
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => { set('is_perishable', true); set('delivery_type', 'local'); }}
+              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
+                ${form.is_perishable
+                  ? 'border-amber-400 bg-amber-50'
+                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
+                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <Zap size={20} className={`mt-0.5 shrink-0 ${form.is_perishable ? 'text-amber-500' : 'text-gray-400'}`} />
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${form.is_perishable ? 'text-amber-800' : 'text-gray-700'}`}>
+                  {t.ap_del_fast}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_fast_sub}</p>
+              </div>
+              {/* Radio indicator */}
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
+                ${form.is_perishable ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
+                {form.is_perishable && <span className="w-2 h-2 rounded-full bg-white" />}
+              </span>
+            </button>
+
+            {/* 🚚 Nationwide Shipping card */}
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => { set('is_perishable', false); set('delivery_type', 'nationwide'); }}
+              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
+                ${!form.is_perishable
+                  ? 'border-blue-400 bg-blue-50'
+                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
+                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <Truck size={20} className={`mt-0.5 shrink-0 ${!form.is_perishable ? 'text-blue-500' : 'text-gray-400'}`} />
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${!form.is_perishable ? 'text-blue-800' : 'text-gray-700'}`}>
+                  {t.ap_del_ship}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_ship_sub}</p>
+              </div>
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
+                ${!form.is_perishable ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}>
+                {!form.is_perishable && <span className="w-2 h-2 rounded-full bg-white" />}
+              </span>
+            </button>
+
           </div>
-          {form.is_perishable && (
-            <div className="mt-3 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-              <MapPin size={14} className="text-amber-500 shrink-0" />
-              <p className="text-xs font-semibold text-amber-800">{t.ap_perishableNote}</p>
-            </div>
-          )}
         </section>
+
 
         <Divider />
 
@@ -1302,7 +1548,7 @@ export default function SellerDashboard() {
           {activeTab === 'overview'    && <OverviewTab    profile={profile} onNavigate={setActiveTab} t={t} cities={cities} />}
           {activeTab === 'sales'       && <SalesTab       profile={profile} t={t} />}
           {activeTab === 'add-product' && <AddProductForm profile={profile} cities={cities} categories={categories} showToast={showToast} t={t} />}
-          {activeTab === 'my-products' && <MyProductsTab  profile={profile} t={t} />}
+          {activeTab === 'my-products' && <MyProductsTab  profile={profile} t={t} showToast={showToast} />}
           {activeTab === 'settings'    && <SettingsTab    profile={profile} cities={cities} showToast={showToast} t={t} navigate={navigate} />}
         </main>
       </div>
