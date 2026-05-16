@@ -137,11 +137,35 @@ function Row({ label, value }) {
   );
 }
 
+// ─── SHARED STATUS META ───────────────────────────────────────────────────────
+
+const ORDER_STATUS_META = {
+  pending:    { arLabel: 'معلق',         enLabel: 'Pending',    dotCls: 'bg-gray-400',    badgeCls: 'bg-gray-100 text-gray-600 border-gray-200' },
+  confirmed:  { arLabel: 'مؤكد',         enLabel: 'Confirmed',  dotCls: 'bg-blue-500',    badgeCls: 'bg-blue-50 text-blue-700 border-blue-200'   },
+  processing: { arLabel: 'قيد التجهيز', enLabel: 'Processing', dotCls: 'bg-amber-500',   badgeCls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  shipped:    { arLabel: 'تم الشحن',    enLabel: 'Shipped',    dotCls: 'bg-indigo-500',  badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200'},
+  delivered:  { arLabel: 'تم التوصيل', enLabel: 'Delivered',  dotCls: 'bg-emerald-500', badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
+  cancelled:  { arLabel: 'ملغي',        enLabel: 'Cancelled',  dotCls: 'bg-red-400',     badgeCls: 'bg-red-50 text-red-600 border-red-200'      },
+};
+
+const DELIVERY_OPTION_ICON = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
+
+function OrderStatusBadge({ status, lang }) {
+  const m = ORDER_STATUS_META[status] ?? ORDER_STATUS_META.confirmed;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badgeCls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dotCls} shrink-0`} />
+      {lang === 'ar' ? m.arLabel : m.enLabel}
+    </span>
+  );
+}
+
 // ─── ORDERS TAB ───────────────────────────────────────────────────────────────
 
 function OrdersTab({ t, lang, isRtl, user }) {
   const [orders,  setOrders]  = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -155,6 +179,8 @@ function OrdersTab({ t, lang, isRtl, user }) {
         setLoading(false);
       });
   }, [user]);
+
+  const toggleExpand = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   if (loading) {
     return (
@@ -192,42 +218,93 @@ function OrdersTab({ t, lang, isRtl, user }) {
             lang === 'ar' ? 'ar-SA' : 'en-US',
             { year: 'numeric', month: 'short', day: 'numeric' }
           );
+          const statusMeta = ORDER_STATUS_META[order.status] ?? ORDER_STATUS_META.confirmed;
+          const isOpen     = !!expanded[order.id];
+          const itemCount  = order.order_items?.length ?? 0;
+
           return (
-            <div key={order.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                <div>
-                  <p className="text-xs text-gray-400 font-medium">{t.orders_num}{order.order_number}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                    <Clock size={11} />{date}
-                  </p>
+            <div key={order.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+
+              {/* Status stripe */}
+              <div className={`h-1 w-full ${statusMeta.dotCls}`} />
+
+              {/* Order header */}
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-xs font-bold text-blue-700 mb-0.5">
+                      {t.orders_num}{order.order_number}
+                    </p>
+                    <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                      <Clock size={10} />{date}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <OrderStatusBadge status={order.status} lang={lang} />
+                    <span className="text-base font-extrabold text-blue-900">
+                      {Number(order.total_amount ?? 0).toFixed(0)}
+                      <span className="text-sm font-bold ms-1">{t.sar}</span>
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-                    <CheckCircle size={10} />{t.orders_confirmed}
-                  </span>
-                  <span className="text-base font-extrabold text-blue-900">
-                    {Number(order.total).toFixed(0)} <span className="text-sm">{t.sar}</span>
-                  </span>
-                </div>
+
+                {/* Expand/collapse items */}
+                <button
+                  onClick={() => toggleExpand(order.id)}
+                  className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  {isOpen
+                    ? (lang === 'ar' ? 'إخفاء المنتجات' : 'Hide items')
+                    : (lang === 'ar' ? `عرض ${itemCount} منتج` : `Show ${itemCount} item${itemCount !== 1 ? 's' : ''}`)}
+                  <ChevronRight
+                    size={13}
+                    className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : (isRtl ? '' : '')}`}
+                  />
+                </button>
               </div>
 
-              <div className="flex flex-col gap-2">
-                {order.order_items?.map((item) => {
-                  const name = lang === 'ar' ? item.name_ar : (item.name_en || item.name_ar);
-                  return (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0`}>
-                        {item.emoji ?? '📦'}
+              {/* Items list — collapsible */}
+              {isOpen && (
+                <div className="border-t border-gray-50 px-5 pb-5 pt-4 flex flex-col gap-3">
+                  {order.order_items?.map((item) => {
+                    const name      = lang === 'ar' ? item.name_ar : (item.name_en || item.name_ar);
+                    const lineTotal = (item.price_at_purchase ?? 0) * (item.quantity ?? 1);
+                    const delivOpt  = item.delivery_option;
+                    const delivIcon = delivOpt ? (DELIVERY_OPTION_ICON[delivOpt] ?? '📦') : null;
+                    const delivLabel = delivOpt === 'fast'
+                      ? (lang === 'ar' ? 'توصيل سريع' : 'Fast Delivery')
+                      : delivOpt === 'pickup'
+                      ? (lang === 'ar' ? 'استلام شخصي' : 'Pickup')
+                      : delivOpt
+                      ? (lang === 'ar' ? 'شحن وطني' : 'Nationwide')
+                      : null;
+
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0`}>
+                          {item.emoji ?? '📦'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-xs text-gray-500">
+                              ×{item.quantity} · {Number(item.price_at_purchase ?? 0).toFixed(0)} {t.sar}
+                            </span>
+                            {delivLabel && (
+                              <span className="text-[10px] text-gray-400 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                                {delivIcon} {delivLabel}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-sm font-extrabold text-blue-900 shrink-0">
+                          {lineTotal.toFixed(0)} <span className="text-xs font-bold">{t.sar}</span>
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-700 font-medium flex-1 truncate">{name}</p>
-                      <p className="text-xs text-gray-400 shrink-0">×{item.quantity}</p>
-                      <p className="text-sm font-bold text-gray-800 shrink-0">
-                        {Number(item.line_total).toFixed(0)} {t.sar}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -235,6 +312,7 @@ function OrdersTab({ t, lang, isRtl, user }) {
     </div>
   );
 }
+
 
 // ─── WISHLIST TAB ─────────────────────────────────────────────────────────────
 

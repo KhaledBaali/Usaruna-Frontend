@@ -5,7 +5,8 @@ import {
   CheckCircle, AlertCircle, Loader2, PlusCircle,
   ShoppingBag, Layers, Truck, Archive, ChevronRight,
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
-  Printer, Plus, Globe, Pencil, Zap, Home,
+  Printer, Plus, Globe, Pencil, Zap, Home, Inbox, ChevronDown,
+  Clock, Circle, RefreshCw,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -107,6 +108,20 @@ const T = {
     st_deleteSuccess: 'تم حذف المتجر بنجاح',
     st_deleteError: 'خطأ في الحذف: ',
     noData: '—',
+
+    nav_orders: 'الطلبات الواردة',
+    ord_title: 'الطلبات الواردة', ord_empty: 'لا توجد طلبات بعد',
+    ord_emptyDesc: 'ستظهر هنا عند استلام أول طلب من عملائك',
+    ord_orderNum: 'طلب رقم', ord_date: 'التاريخ', ord_product: 'المنتج',
+    ord_qty: 'الكمية', ord_price: 'السعر', ord_delivery: 'طريقة التوصيل',
+    ord_status: 'الحالة', ord_updateStatus: 'تحديث الحالة',
+    ord_sar: 'ر.س',
+    ord_s_pending: 'معلق', ord_s_confirmed: 'مؤكد',
+    ord_s_processing: 'قيد التجهيز', ord_s_shipped: 'تم الشحن',
+    ord_s_delivered: 'تم التوصيل', ord_s_cancelled: 'ملغي',
+    ord_updateOk: 'تم تحديث الحالة ✓', ord_updateErr: 'خطأ في التحديث: ',
+    ord_del_fast: 'توصيل سريع', ord_del_pickup: 'استلام شخصي', ord_del_ship: 'شحن وطني',
+    ord_loading: 'جاري تحميل الطلبات…',
   },
   en: {
     dir: 'ltr', langBtn: 'العربية',
@@ -201,6 +216,20 @@ const T = {
     st_deleteSuccess: 'Store deleted successfully',
     st_deleteError: 'Error deleting store: ',
     noData: '—',
+
+    nav_orders: 'Incoming Orders',
+    ord_title: 'Incoming Orders', ord_empty: 'No orders yet',
+    ord_emptyDesc: 'Orders will appear here once customers start buying your products',
+    ord_orderNum: 'Order #', ord_date: 'Date', ord_product: 'Product',
+    ord_qty: 'Qty', ord_price: 'Price', ord_delivery: 'Delivery',
+    ord_status: 'Status', ord_updateStatus: 'Update Status',
+    ord_sar: 'SAR',
+    ord_s_pending: 'Pending', ord_s_confirmed: 'Confirmed',
+    ord_s_processing: 'Processing', ord_s_shipped: 'Shipped',
+    ord_s_delivered: 'Delivered', ord_s_cancelled: 'Cancelled',
+    ord_updateOk: 'Status updated ✓', ord_updateErr: 'Update error: ',
+    ord_del_fast: 'Fast Delivery', ord_del_pickup: 'Pickup', ord_del_ship: 'Nationwide',
+    ord_loading: 'Loading orders…',
   },
 };
 
@@ -1484,11 +1513,219 @@ export default function SellerDashboard() {
 
   if (!isAuthorized || !profile) return null;
 
+// ─── Producer Orders Tab ────────────────────────────────────────────────────────
+
+const ORDER_STATUSES = ['pending','confirmed','processing','shipped','delivered','cancelled'];
+
+const STATUS_META = {
+  pending:    { ar: 'معلق',          en: 'Pending',    dot: 'bg-gray-400',    badge: 'bg-gray-100 text-gray-600 border-gray-200' },
+  confirmed:  { ar: 'مؤكد',          en: 'Confirmed',  dot: 'bg-blue-500',    badge: 'bg-blue-50 text-blue-700 border-blue-200'  },
+  processing: { ar: 'قيد التجهيز',  en: 'Processing', dot: 'bg-amber-500',   badge: 'bg-amber-50 text-amber-700 border-amber-200'},
+  shipped:    { ar: 'تم الشحن',     en: 'Shipped',    dot: 'bg-indigo-500',  badge: 'bg-indigo-50 text-indigo-700 border-indigo-200'},
+  delivered:  { ar: 'تم التوصيل',  en: 'Delivered',  dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
+  cancelled:  { ar: 'ملغي',         en: 'Cancelled',  dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 border-red-200'   },
+};
+
+const DELIVERY_ICONS = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
+
+function StatusBadge({ status, lang }) {
+  const m = STATUS_META[status] ?? STATUS_META.pending;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badge}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dot} shrink-0`} />
+      {lang === 'ar' ? m.ar : m.en}
+    </span>
+  );
+}
+
+function StatusDropdown({ currentStatus, onUpdate, lang, t }) {
+  const [open, setOpen] = useState(false);
+  const m = STATUS_META[currentStatus] ?? STATUS_META.pending;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badge} hover:opacity-80 transition-opacity`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${m.dot} shrink-0`} />
+        {lang === 'ar' ? m.ar : m.en}
+        <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className={`absolute z-50 mt-1 bg-white rounded-2xl shadow-xl border border-gray-100 py-1 min-w-[150px]
+          ${lang === 'ar' ? 'right-0' : 'left-0'}`}>
+          {ORDER_STATUSES.map((s) => {
+            const sm = STATUS_META[s];
+            return (
+              <button
+                key={s}
+                onClick={() => { setOpen(false); onUpdate(s); }}
+                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold hover:bg-gray-50 transition-colors
+                  text-${lang === 'ar' ? 'right' : 'left'} ${
+                    s === currentStatus ? 'text-blue-700 bg-blue-50' : 'text-gray-700'
+                  }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${sm.dot} shrink-0`} />
+                {lang === 'ar' ? sm.ar : sm.en}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProducerOrdersTab({ t, showToast, user, lang }) {
+  const isRtl = t.dir === 'rtl';
+  const [orderItems, setOrderItems] = useState([]);
+  const [loading, setLoading]       = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('order_items')
+      .select('*, orders(order_number, created_at, status, user_id, total_amount)')
+      .eq('producer_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[ProducerOrdersTab]', error);
+        setOrderItems(data ?? []);
+        setLoading(false);
+      });
+  }, [user]);
+
+  const handleStatusUpdate = async (itemId, orderId, newStatus) => {
+    // Optimistic update
+    setOrderItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? { ...item, orders: { ...item.orders, status: newStatus } }
+          : item
+      )
+    );
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('id', orderId);
+    if (error) {
+      showToast(t.ord_updateErr + error.message, 'error');
+      // Rollback
+      setOrderItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? { ...item, orders: { ...item.orders, status: item.orders.status } }
+            : item
+        )
+      );
+    } else {
+      showToast(t.ord_updateOk, 'success');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32 gap-3 text-gray-400">
+        <Loader2 size={22} className="animate-spin text-blue-400" />
+        <span className="text-sm">{t.ord_loading}</span>
+      </div>
+    );
+  }
+
+  if (!orderItems.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mb-5">
+          <Inbox size={32} className="text-blue-200" />
+        </div>
+        <h3 className="text-lg font-extrabold text-gray-700 mb-2">{t.ord_empty}</h3>
+        <p className="text-sm text-gray-400 max-w-xs leading-relaxed">{t.ord_emptyDesc}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-extrabold text-gray-800 mb-6">{t.ord_title}</h2>
+      <div className="flex flex-col gap-4">
+        {orderItems.map((item) => {
+          const name     = isRtl ? (item.name_ar ?? '—') : (item.name_en ?? item.name_ar ?? '—');
+          const order    = item.orders ?? {};
+          const date     = order.created_at
+            ? new Date(order.created_at).toLocaleDateString(
+                isRtl ? 'ar-SA' : 'en-US',
+                { year: 'numeric', month: 'short', day: 'numeric' }
+              )
+            : '—';
+          const delivOpt = item.delivery_option ?? 'nationwide';
+          const delivIcon = DELIVERY_ICONS[delivOpt] ?? '📦';
+          const delivLabel = delivOpt === 'fast' ? t.ord_del_fast
+            : delivOpt === 'pickup' ? t.ord_del_pickup
+            : t.ord_del_ship;
+          const lineTotal = (item.price_at_purchase ?? 0) * (item.quantity ?? 1);
+
+          return (
+            <div key={item.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+              {/* Header row */}
+              <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-xs font-bold text-blue-700">
+                    {t.ord_orderNum}{order.order_number ?? '—'}
+                  </p>
+                  <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                    <Clock size={10} />{date}
+                  </p>
+                </div>
+                <StatusDropdown
+                  currentStatus={order.status ?? 'pending'}
+                  onUpdate={(s) => handleStatusUpdate(item.id, order.id ?? item.order_id, s)}
+                  lang={isRtl ? 'ar' : 'en'}
+                  t={t}
+                />
+              </div>
+
+              {/* Product row */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
+                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'}
+                  flex items-center justify-center text-xl shrink-0`}>
+                  {item.emoji ?? '📦'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <span className="text-xs text-gray-500">
+                      ×{item.quantity} · {Number(item.price_at_purchase).toFixed(0)} {t.ord_sar}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                      {delivIcon} {delivLabel}
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-end">
+                  <p className="text-base font-extrabold text-blue-900">
+                    {lineTotal.toFixed(0)}
+                  </p>
+                  <p className="text-[10px] text-gray-400">{t.ord_sar}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+  // ── Restore scoping — the above function was intentionally placed at module scope ──
+  // (JSX for the dashboard render continues below)
+
+
   const profileCity = cities.find((c) => c.id === profile.city_id);
 
   const NAV_ITEMS = [
     { id: 'overview',    label: t.nav_overview,    Icon: LayoutDashboard },
     { id: 'sales',       label: t.nav_sales,        Icon: TrendingUp      },
+    { id: 'orders',      label: t.nav_orders,       Icon: Inbox           },
     { id: 'add-product', label: t.nav_addProduct,   Icon: PlusCircle      },
     { id: 'my-products', label: t.nav_myProducts,   Icon: Package         },
     { id: 'settings',    label: t.nav_settings,     Icon: Settings        },
@@ -1587,6 +1824,7 @@ export default function SellerDashboard() {
         <main className="flex-1 overflow-y-auto p-5 lg:p-10 pb-20 md:pb-10">
           {activeTab === 'overview'    && <OverviewTab    profile={profile} onNavigate={setActiveTab} t={t} cities={cities} />}
           {activeTab === 'sales'       && <SalesTab       profile={profile} t={t} />}
+          {activeTab === 'orders'      && <ProducerOrdersTab profile={profile} t={t} showToast={showToast} user={user} lang={t.dir === 'rtl' ? 'ar' : 'en'} />}
           {activeTab === 'add-product' && <AddProductForm profile={profile} cities={cities} categories={categories} showToast={showToast} t={t} />}
           {activeTab === 'my-products' && <MyProductsTab  profile={profile} t={t} showToast={showToast} />}
           {activeTab === 'settings'    && <SettingsTab    profile={profile} cities={cities} showToast={showToast} t={t} navigate={navigate} />}
