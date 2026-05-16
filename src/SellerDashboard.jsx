@@ -90,6 +90,14 @@ const T = {
     ap_del_pickup_sub: 'حصراً لنفس المدينة — يحضر العميل لاستلام الطلب',
     ap_del_ship: '🚚 شحن لجميع مدن المملكة',
     ap_del_ship_sub: 'يظهر لجميع العملاء بغض النظر عن مدينتهم',
+    ap_deliveryHint: 'اختر طريقة واحدة أو أكثر (بحد أقصى ثلاث)',
+    ap_errDelivery: 'يرجى اختيار طريقة توصيل واحدة على الأقل',
+    mp_delete:        'حذف المنتج',
+    mp_deleteConfirm: 'تأكيد الحذف',
+    mp_deleting:      'جاري الحذف...',
+    mp_deleteSuccess: 'تم حذف المنتج بنجاح',
+    mp_deleteError:   'خطأ في الحذف: ',
+    mp_deleteWarning: 'هذا الإجراء لا يمكن التراجع عنه. سيُحذف المنتج نهائياً.',
 
 
 
@@ -223,6 +231,14 @@ const T = {
     ap_del_pickup_sub: 'Same city only — customer comes to pick up the order',
     ap_del_ship: '🚚 Shipping to all KSA cities',
     ap_del_ship_sub: 'Visible to all customers regardless of their city',
+    ap_deliveryHint: 'Choose one or more options (up to three)',
+    ap_errDelivery: 'Please select at least one delivery method',
+    mp_delete:        'Delete Product',
+    mp_deleteConfirm: 'Confirm Delete',
+    mp_deleting:      'Deleting...',
+    mp_deleteSuccess: 'Product deleted successfully',
+    mp_deleteError:   'Error deleting: ',
+    mp_deleteWarning: 'This action cannot be undone. The product will be permanently deleted.',
 
 
 
@@ -602,39 +618,104 @@ function SalesTab({ profile, t }) {
   );
 }
 
-// ─── Edit Product Modal ─────────────────────────────────────────────────────────
+// ─── Delivery helpers ──────────────────────────────────────────────────────────
 
-// Derive a 3-state deliveryType from a DB product row.
-// Old rows that used 'local' map to 'fast' (the primary local delivery type).
-function deriveDeliveryType(p) {
-  if (p.delivery_type === 'pickup')     return 'pickup';
-  if (p.delivery_type === 'nationwide') return 'nationwide';
-  if (p.delivery_type === 'fast')       return 'fast';
-  // Legacy: is_perishable=true → 'fast', false → 'nationwide'
-  return p.is_perishable ? 'fast' : 'nationwide';
+// Parses delivery_type from DB — supports legacy single string and new JSON array.
+function parseDeliveryTypes(p) {
+  const dt = p?.delivery_type;
+  if (!dt) return p?.is_perishable ? ['fast'] : ['nationwide'];
+  try {
+    const arr = JSON.parse(dt);
+    if (Array.isArray(arr) && arr.length > 0) return arr;
+  } catch { /* legacy string fallback below */ }
+  if (dt === 'local') return ['fast'];
+  return [dt]; // single string — wrap in array
 }
 
-function EditProductModal({ product, t, onClose, onSaved, showToast }) {
-  const [price,        setPrice]       = useState(String(product.price ?? ''));
-  const [stock,        setStock]       = useState(String(product.stock ?? ''));
-  const [deliveryType, setDeliveryType] = useState(deriveDeliveryType(product));
-  const [saving,       setSaving]      = useState(false);
+// Serialises the delivery types array → stored as JSON string in delivery_type column.
+function serializeDeliveryTypes(arr) {
+  return arr.length === 1 ? arr[0] : JSON.stringify(arr);
+}
+
+// ─── DeliveryCheckCard — shared checkbox card for add & edit ──────────────────
+
+function DeliveryCheckCard({ checked, onToggle, disabled, Icon, iconColor, label, sub, activeBorder, activeBg }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onToggle}
+      className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150 w-full
+        ${checked ? `${activeBorder} ${activeBg}` : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
+        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      <Icon size={20} className={`mt-0.5 shrink-0 ${checked ? iconColor : 'text-gray-400'}`} />
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-bold ${checked ? 'text-gray-800' : 'text-gray-600'}`}>{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5 leading-snug">{sub}</p>
+      </div>
+      {/* Checkbox indicator */}
+      <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
+        ${checked ? `${activeBorder} bg-current` : 'border-gray-300 bg-white'}`}
+        style={checked ? { backgroundColor: 'currentColor' } : {}}>
+        {checked && (
+          <span className={`w-5 h-5 rounded-md flex items-center justify-center ${activeBorder.replace('border-', 'bg-')}`}>
+            <Check size={11} className="text-white" strokeWidth={3} />
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// ─── Edit Product Modal ─────────────────────────────────────────────────────────
+
+function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }) {
+  const isRtl = t.dir === 'rtl';
+
+  const [price,          setPrice]          = useState(String(product.price ?? ''));
+  const [stock,          setStock]          = useState(String(product.stock ?? ''));
+  const [deliveryTypes,  setDeliveryTypes]  = useState(parseDeliveryTypes(product));
+  const [saving,         setSaving]         = useState(false);
+  const [deleting,       setDeleting]       = useState(false);
+  const [confirmDelete,  setConfirmDelete]  = useState(false);
+
+  const busy = saving || deleting;
+
+  // Toggle a delivery type in the multi-select (min 1, max 3)
+  const toggleDelivery = (type) => {
+    setDeliveryTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.length > 1 ? prev.filter((d) => d !== type) : prev; // keep at least 1
+      }
+      return prev.length < 3 ? [...prev, type] : prev; // max 3
+    });
+  };
 
   const handleSave = async () => {
     const priceVal = parseFloat(price);
     const stockVal = parseInt(stock);
-    if (isNaN(priceVal) || priceVal < 0) { showToast(t.dir === 'rtl' ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price', 'error'); return; }
-    if (isNaN(stockVal) || stockVal < 0) { showToast(t.dir === 'rtl' ? 'يرجى إدخال كمية صحيحة' : 'Please enter a valid stock', 'error'); return; }
+    if (isNaN(priceVal) || priceVal < 0) {
+      showToast(isRtl ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price', 'error');
+      return;
+    }
+    if (isNaN(stockVal) || stockVal < 0) {
+      showToast(isRtl ? 'يرجى إدخال كمية صحيحة' : 'Please enter a valid stock', 'error');
+      return;
+    }
+    if (deliveryTypes.length === 0) {
+      showToast(t.ap_errDelivery, 'error');
+      return;
+    }
 
-    const isLocal = deliveryType !== 'nationwide';
     setSaving(true);
     const { data, error } = await supabase
       .from('products')
       .update({
         price:         priceVal,
         stock:         stockVal,
-        is_perishable: isLocal,
-        delivery_type: deliveryType,    // 'fast' | 'pickup' | 'nationwide'
+        is_perishable: deliveryTypes.some((d) => d !== 'nationwide'),
+        delivery_type: serializeDeliveryTypes(deliveryTypes),
       })
       .eq('id', product.id)
       .select('id, price, stock, is_perishable, delivery_type')
@@ -642,60 +723,63 @@ function EditProductModal({ product, t, onClose, onSaved, showToast }) {
 
     setSaving(false);
     if (error) {
-      console.error('[EditProduct] Update failed:', error);
+      console.error('[EditProduct]', error);
       showToast(`${t.mp_editError}${error.message}`, 'error');
     } else {
       showToast(t.mp_editSuccess, 'success');
-      // Task 2: live-patch — pass the full updated row to parent immediately
       onSaved(data);
+      onClose();
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    const { error } = await supabase.from('products').delete().eq('id', product.id);
+    setDeleting(false);
+    if (error) {
+      showToast(`${t.mp_deleteError}${error.message}`, 'error');
+    } else {
+      showToast(t.mp_deleteSuccess, 'success');
+      onDeleted?.(product.id);
       onClose();
     }
   };
 
   const inputCls = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all';
 
-  // Reusable radio card renderer
-  const DeliveryCard = ({ value, icon: Icon, iconActive, label, sub, activeColor, activeBorder, activeBg, activeText }) => {
-    const active = deliveryType === value;
-    return (
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => setDeliveryType(value)}
-        className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
-          ${active ? `${activeBorder} ${activeBg}` : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
-      >
-        <Icon size={18} className={`mt-0.5 shrink-0 ${active ? iconActive : 'text-gray-400'}`} />
-        <div className="flex-1">
-          <p className={`text-sm font-bold ${active ? activeText : 'text-gray-700'}`}>{label}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-        </div>
-        {active && <CheckCircle size={16} className={`ms-auto mt-0.5 shrink-0 ${iconActive}`} />}
-      </button>
-    );
-  };
+  const DELIVERY_OPTIONS = [
+    { value: 'fast',       Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
+    { value: 'pickup',     Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
+    { value: 'nationwide', Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
+  ];
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
     >
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
           <div>
             <h2 className="text-lg font-extrabold text-gray-800">{t.mp_editTitle}</h2>
-            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[240px]">{product.name_ar}</p>
+            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[260px]">
+              {isRtl ? product.name_ar : (product.name_en || product.name_ar)}
+            </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+          >
             <X size={18} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 flex flex-col gap-5">
+        {/* ── Scrollable body ── */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
           {/* Price + Stock */}
           <div className="grid grid-cols-2 gap-4">
@@ -703,57 +787,105 @@ function EditProductModal({ product, t, onClose, onSaved, showToast }) {
               <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.mp_editPrice}</label>
               <input type="number" min="0" step="0.01" value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className={inputCls} disabled={saving} />
+                className={inputCls} disabled={busy} />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.mp_editStock}</label>
               <input type="number" min="0" step="1" value={stock}
                 onChange={(e) => setStock(e.target.value)}
-                className={inputCls} disabled={saving} />
+                className={inputCls} disabled={busy} />
             </div>
           </div>
 
-          {/* Delivery — 3 radio cards */}
+          {/* Delivery — multi-select checkboxes */}
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-2">{t.mp_editDelivery}</label>
-            <div className="flex flex-col gap-2">
-              <DeliveryCard
-                value="fast"
-                icon={Zap} iconActive="text-amber-500"
-                label={t.ap_del_fast} sub={t.ap_del_fast_sub}
-                activeBorder="border-amber-400" activeBg="bg-amber-50" activeText="text-amber-800"
-              />
-              <DeliveryCard
-                value="pickup"
-                icon={Home} iconActive="text-emerald-600"
-                label={t.ap_del_pickup} sub={t.ap_del_pickup_sub}
-                activeBorder="border-emerald-400" activeBg="bg-emerald-50" activeText="text-emerald-800"
-              />
-              <DeliveryCard
-                value="nationwide"
-                icon={Truck} iconActive="text-blue-500"
-                label={t.ap_del_ship} sub={t.ap_del_ship_sub}
-                activeBorder="border-blue-400" activeBg="bg-blue-50" activeText="text-blue-800"
-              />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-gray-600">{t.mp_editDelivery}</label>
+              <span className="text-[11px] text-gray-400 font-medium">{t.ap_deliveryHint}</span>
             </div>
+            <div className="flex flex-col gap-2">
+              {DELIVERY_OPTIONS.map((opt) => (
+                <DeliveryCheckCard
+                  key={opt.value}
+                  checked={deliveryTypes.includes(opt.value)}
+                  onToggle={() => toggleDelivery(opt.value)}
+                  disabled={busy}
+                  Icon={opt.Icon}
+                  iconColor={opt.iconColor}
+                  label={opt.label}
+                  sub={opt.sub}
+                  activeBorder={opt.activeBorder}
+                  activeBg={opt.activeBg}
+                />
+              ))}
+            </div>
+            {/* Selected count indicator */}
+            <p className="mt-2 text-[11px] text-gray-400 text-center">
+              {isRtl
+                ? `${deliveryTypes.length} / 3 طرق مختارة`
+                : `${deliveryTypes.length} / 3 methods selected`}
+            </p>
+          </div>
+
+          {/* ── Danger Zone — Delete ── */}
+          <div className="pt-2 border-t border-gray-100">
+            {!confirmDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border border-red-200 text-red-500 text-sm font-bold hover:bg-red-50 active:scale-[0.98] transition-all disabled:opacity-40"
+              >
+                <Trash2 size={14} /> {t.mp_delete}
+              </button>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-xs font-semibold text-red-700 leading-snug">{t.mp_deleteWarning}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    {t.mp_cancel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white text-sm font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                  >
+                    {deleting
+                      ? <><Loader2 size={13} className="animate-spin" />{t.mp_deleting}</>
+                      : <><Trash2 size={13} />{t.mp_deleteConfirm}</>}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center gap-3 px-6 pb-6">
+        {/* ── Footer — Save / Cancel ── */}
+        <div className="flex items-center gap-3 px-6 py-5 border-t border-gray-100 shrink-0">
           <button
             onClick={onClose}
-            disabled={saving}
-            className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            disabled={busy}
+            className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             {t.mp_cancel}
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="flex-1 py-2.5 rounded-2xl bg-blue-900 text-white text-sm font-bold hover:bg-blue-800 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={busy || deliveryTypes.length === 0}
+            className="flex-1 py-3 rounded-2xl bg-blue-900 text-white text-sm font-bold hover:bg-blue-800 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {saving ? <><Loader2 size={14} className="animate-spin" />{t.mp_editSaving}</> : t.mp_editSave}
+            {saving
+              ? <><Loader2 size={14} className="animate-spin" />{t.mp_editSaving}</>
+              : t.mp_editSave}
           </button>
         </div>
       </div>
@@ -792,11 +924,15 @@ function MyProductsTab({ profile, t, showToast }) {
     }
   };
 
-  // Called by EditProductModal on successful save — live-patch the list row
+  // Live-patch list on save
   const handleSaved = (updated) => {
-    setProducts((prev) =>
-      prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p)
-    );
+    setProducts((prev) => prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p));
+  };
+
+  // Remove product from list after delete
+  const handleDeleted = (id) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    setEditTarget(null);
   };
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-blue-400" /></div>;
@@ -835,25 +971,26 @@ function MyProductsTab({ profile, t, showToast }) {
               <p className="text-xs text-gray-500 mt-0.5">
                 {p.price} {t.mp_sar} · {p.stock} {t.dir === 'rtl' ? 'وحدة' : 'units'}
               </p>
-              {/* Delivery badge — 3 states */}
-              {(() => {
-                const dt = p.delivery_type ?? (p.is_perishable ? 'fast' : 'nationwide');
-                if (dt === 'pickup') return (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                    <Home size={9} />{t.dir === 'rtl' ? 'استلام شخصي' : 'Pickup'}
-                  </span>
-                );
-                if (dt === 'fast') return (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                    <Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast Delivery'}
-                  </span>
-                );
-                return (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                    <Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}
-                  </span>
-                );
-              })()}
+              {/* Delivery badges — supports multiple */}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {parseDeliveryTypes(p).map((dt) => {
+                  if (dt === 'pickup') return (
+                    <span key="pickup" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                      <Home size={9} />{t.dir === 'rtl' ? 'استلام شخصي' : 'Pickup'}
+                    </span>
+                  );
+                  if (dt === 'fast') return (
+                    <span key="fast" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      <Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast'}
+                    </span>
+                  );
+                  return (
+                    <span key="nationwide" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                      <Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}
+                    </span>
+                  );
+                })}
+              </div>
 
             </div>
 
@@ -888,6 +1025,7 @@ function MyProductsTab({ profile, t, showToast }) {
           showToast={showToast}
           onClose={() => setEditTarget(null)}
           onSaved={handleSaved}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
@@ -968,10 +1106,9 @@ const EMPTY_PRODUCT = {
   name_ar: '', name_en: '',
   description_ar: '', description_en: '',
   price: '', category_id: '', city_id: '',
-  // 'fast' | 'pickup' | 'nationwide' — single source of truth for delivery logic
-  // is_perishable in the DB is derived: delivery_type !== 'nationwide'
-  delivery_type: 'nationwide', stock: '',
-  weight: '',       // الوزن — optional, numeric (kg)
+  delivery_types: ['nationwide'], // multi-select array — stored as JSON string in delivery_type
+  stock: '',
+  weight: '',
   sizes: [], colors: [], specs: [],
 };
 
@@ -988,12 +1125,13 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
   const validate = () => {
     const errs = {};
-    if (!form.name_ar.trim())  errs.name_ar    = t.ap_errNameAr;
-    if (!form.price)           errs.price       = t.ap_errPrice;
+    if (!form.name_ar.trim())          errs.name_ar      = t.ap_errNameAr;
+    if (!form.price)                   errs.price        = t.ap_errPrice;
     else if (isNaN(parseFloat(form.price)) || parseFloat(form.price) < 0) errs.price = t.ap_errPriceBad;
-    if (!form.stock)           errs.stock       = t.ap_errStock;
-    if (!form.category_id)     errs.category_id = t.ap_errCat;
-    if (!form.city_id)         errs.city_id     = t.ap_errCity;
+    if (!form.stock)                   errs.stock        = t.ap_errStock;
+    if (!form.category_id)             errs.category_id  = t.ap_errCat;
+    if (!form.city_id)                 errs.city_id      = t.ap_errCity;
+    if (!form.delivery_types?.length)  errs.delivery     = t.ap_errDelivery;
     return errs;
   };
 
@@ -1023,15 +1161,16 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       //     SELECT id FROM producer_profiles WHERE user_id = auth.uid()
       //   ))
       // So we send profile.id (the PK of the profile owned by the current auth user).
-      const isLocal  = form.delivery_type !== 'nationwide';
+      const delivTypes = form.delivery_types ?? ['nationwide'];
+      const isLocal    = delivTypes.some((d) => d !== 'nationwide');
       const payload = {
-        producer_id:   profile.id,               // ← producer_profiles PK (FK target)
+        producer_id:   profile.id,
         category_id:   parseInt(form.category_id),
         city_id:       parseInt(form.city_id),
         name_ar:       form.name_ar.trim(),
         price:         parseFloat(form.price),
         is_perishable: isLocal,
-        delivery_type: form.delivery_type,        // 'fast' | 'pickup' | 'nationwide'
+        delivery_type: serializeDeliveryTypes(delivTypes), // JSON string (or single string for 1 type)
         stock:         parseInt(form.stock),
         image_url,
         is_active:     true,
@@ -1202,78 +1341,52 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
         <Divider />
 
-        {/* Delivery Type — 3 radio cards */}
+        {/* Delivery Types — multi-select checkbox cards */}
         <section>
-          <SectionTitle icon={Truck} label={t.ap_shipping} />
-          <div className="flex flex-col gap-3 mt-4">
-
-            {/* ⚡ Fast Delivery */}
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => set('delivery_type', 'fast')}
-              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
-                ${form.delivery_type === 'fast'
-                  ? 'border-amber-400 bg-amber-50'
-                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
-                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <Zap size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'fast' ? 'text-amber-500' : 'text-gray-400'}`} />
-              <div className="flex-1">
-                <p className={`text-sm font-bold ${form.delivery_type === 'fast' ? 'text-amber-800' : 'text-gray-700'}`}>{t.ap_del_fast}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_fast_sub}</p>
-              </div>
-              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
-                ${form.delivery_type === 'fast' ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
-                {form.delivery_type === 'fast' && <span className="w-2 h-2 rounded-full bg-white" />}
-              </span>
-            </button>
-
-            {/* 🏠 Personal Pickup */}
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => set('delivery_type', 'pickup')}
-              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
-                ${form.delivery_type === 'pickup'
-                  ? 'border-emerald-400 bg-emerald-50'
-                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
-                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <Home size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'pickup' ? 'text-emerald-600' : 'text-gray-400'}`} />
-              <div className="flex-1">
-                <p className={`text-sm font-bold ${form.delivery_type === 'pickup' ? 'text-emerald-800' : 'text-gray-700'}`}>{t.ap_del_pickup}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_pickup_sub}</p>
-              </div>
-              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
-                ${form.delivery_type === 'pickup' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white'}`}>
-                {form.delivery_type === 'pickup' && <span className="w-2 h-2 rounded-full bg-white" />}
-              </span>
-            </button>
-
-            {/* 🚚 Nationwide Shipping */}
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => set('delivery_type', 'nationwide')}
-              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
-                ${form.delivery_type === 'nationwide'
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
-                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <Truck size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'nationwide' ? 'text-blue-500' : 'text-gray-400'}`} />
-              <div className="flex-1">
-                <p className={`text-sm font-bold ${form.delivery_type === 'nationwide' ? 'text-blue-800' : 'text-gray-700'}`}>{t.ap_del_ship}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_ship_sub}</p>
-              </div>
-              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
-                ${form.delivery_type === 'nationwide' ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}>
-                {form.delivery_type === 'nationwide' && <span className="w-2 h-2 rounded-full bg-white" />}
-              </span>
-            </button>
-
+          <div className="flex items-center justify-between mb-4">
+            <SectionTitle icon={Truck} label={t.ap_shipping} />
+            <span className="text-[11px] text-gray-400 font-medium">{t.ap_deliveryHint}</span>
           </div>
+
+          {fieldErrs.delivery && (
+            <p className="text-xs text-red-500 font-semibold mb-2">{fieldErrs.delivery}</p>
+          )}
+
+          <div className="flex flex-col gap-3">
+            {[
+              { value: 'fast',       Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
+              { value: 'pickup',     Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
+              { value: 'nationwide', Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
+            ].map((opt) => {
+              const checked = (form.delivery_types ?? []).includes(opt.value);
+              const toggle = () => {
+                const prev = form.delivery_types ?? [];
+                const next = checked
+                  ? prev.filter((d) => d !== opt.value)
+                  : prev.length < 3 ? [...prev, opt.value] : prev;
+                if (next.length > 0) set('delivery_types', next);
+              };
+              return (
+                <DeliveryCheckCard
+                  key={opt.value}
+                  checked={checked}
+                  onToggle={toggle}
+                  disabled={submitting}
+                  Icon={opt.Icon}
+                  iconColor={opt.iconColor}
+                  label={opt.label}
+                  sub={opt.sub}
+                  activeBorder={opt.activeBorder}
+                  activeBg={opt.activeBg}
+                />
+              );
+            })}
+          </div>
+
+          {/* Selected count */}
+          <p className="mt-2 text-[11px] text-gray-400 text-center">
+            {(form.delivery_types ?? []).length} / 3 {t.dir === 'rtl' ? 'طرق مختارة' : 'methods selected'}
+          </p>
         </section>
 
 
