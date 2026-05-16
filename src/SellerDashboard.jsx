@@ -689,16 +689,15 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         image_url = urlData.publicUrl;
       }
       setPhase('saving');
-      // ── CRITICAL FIX: producer_id must equal auth.uid() (RLS policy).
-      // profile.id is the producer_profiles PK (different UUID).
-      // profile.user_id is the auth UID that matches auth.uid().
-      //
-      // ── SCHEMA-AWARE PAYLOAD ──
-      // Only include optional columns when they carry actual values.
-      // This prevents 400 "column not found in schema cache" errors on
-      // databases where patch_v2_complete_schema_fix.sql has not been run yet.
+      // ── ARCHITECTURE: producer_id = producer_profiles.id (the profile PK)
+      // products.producer_id FK references producer_profiles.id
+      // The INSERT RLS policy is a subquery:
+      //   WITH CHECK (producer_id IN (
+      //     SELECT id FROM producer_profiles WHERE user_id = auth.uid()
+      //   ))
+      // So we send profile.id (the PK of the profile owned by the current auth user).
       const payload = {
-        producer_id:   profile.user_id,          // ← FIXED (was profile.id)
+        producer_id:   profile.id,               // ← producer_profiles PK (FK target)
         category_id:   parseInt(form.category_id),
         city_id:       parseInt(form.city_id),
         name_ar:       form.name_ar.trim(),
@@ -723,9 +722,26 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       if (form.colors.length)      payload.colors         = form.colors;
       if (form.specs.length)       payload.specs          = form.specs;
 
-      const { error: insertError } = await supabase.from('products').insert(payload);
-      if (insertError) { showToast(`${t.ap_errSave}${insertError.message}`, 'error'); }
-      else { showToast(t.ap_success, 'success'); setForm(EMPTY_PRODUCT); setImageFile(null); }
+      const { data: insertData, error: insertError } = await supabase
+        .from('products')
+        .insert(payload)
+        .select('id, name_ar, producer_id')
+        .single();
+
+      if (insertError) {
+        // Log full error for debugging (visible in browser DevTools console)
+        console.error('[AddProduct] Insert failed:', {
+          code: insertError.code, message: insertError.message,
+          details: insertError.details, hint: insertError.hint,
+          payload,
+        });
+        showToast(`${t.ap_errSave}${insertError.message}`, 'error');
+      } else {
+        console.log('[AddProduct] Insert success — id:', insertData?.id);
+        showToast(t.ap_success, 'success');
+        setForm(EMPTY_PRODUCT);
+        setImageFile(null);
+      }
     } catch (err) {
       showToast(`${t.ap_errSave}${err.message}`, 'error');
     } finally {
