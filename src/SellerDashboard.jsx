@@ -48,7 +48,7 @@ const T = {
     ap_category: 'الفئة', ap_city: 'المدينة',
     ap_shipping: 'الشحن والتوصيل',
     ap_deliveryType: 'نوع التوصيل', ap_nature: 'طبيعة المنتج',
-    ap_perishable: 'طازج / سريع التلف',
+    ap_perishable: 'منتج طازج (يتطلب توصيل في نفس اليوم)',
     ap_perishableNote: 'سيظهر هذا المنتج فقط للعملاء في نفس مدينتك',
     ap_nationwide: '🚚 لجميع المناطق', ap_local: '📍 محلي فقط',
     ap_selectCat: '— اختر الفئة —', ap_selectCity: '— اختر المدينة —',

@@ -56,8 +56,8 @@ function normaliseProduct(row) {
     // ── Producer / seller metadata ──
     family:       p?.business_name_ar ?? p?.name_ar ?? row.family,
     familyEn:     p?.business_name_en ?? p?.name_en ?? row.familyEn,
-    sellerCity:   p?.city_ar       ?? p?.city       ?? row.sellerCity,
-    sellerCityEn: p?.city_en       ?? row.sellerCityEn,
+    sellerCity:   row.cities?.name_ar ?? p?.city_ar       ?? p?.city       ?? row.sellerCity,
+    sellerCityEn: row.cities?.name_en ?? p?.city_en       ?? row.sellerCityEn,
     whatsapp:     p?.whatsapp      ?? row.whatsapp,
     partnerSince: p?.partner_since ?? row.partnerSince,
     // ── Review defaults (DB products won’t have these yet) ──
@@ -75,7 +75,7 @@ export async function fetchProducts() {
       // The category join is intentionally omitted: we derive emoji/gradient from category_id
       // using the local CATEGORY_EMOJI_BY_ID / CATEGORY_GRADIENT_BY_ID maps instead,
       // avoiding any RLS or FK-registration issues on the categories table.
-      .select('*, producer_profiles(*)')
+      .select('*, producer_profiles(*), cities(*)')
       .eq('is_active', true);
     if (error) throw error;
     return data.map(normaliseProduct);
@@ -89,7 +89,7 @@ export async function fetchProductById(id) {
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('*, producer_profiles(*)')
+      .select('*, producer_profiles(*), cities(*)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
