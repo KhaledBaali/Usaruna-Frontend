@@ -5,7 +5,7 @@ import {
   CheckCircle, AlertCircle, Loader2, PlusCircle,
   ShoppingBag, Layers, Truck, Archive, ChevronRight,
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
-  Printer, Plus, Globe, Pencil, Zap,
+  Printer, Plus, Globe, Pencil, Zap, Home,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -85,8 +85,11 @@ const T = {
     mp_cancel: 'إلغاء',
     ap_del_fast: '⚡ توصيل سريع (خلال ساعة-ساعتين)',
     ap_del_fast_sub: 'حصراً لنفس المدينة — يظهر فقط لعملاء مدينتك',
-    ap_del_ship: '🚚 شحن لجميع المدن',
+    ap_del_pickup: '🏠 استلام شخصي (من مقر الأسرة)',
+    ap_del_pickup_sub: 'حصراً لنفس المدينة — يحضر العميل لاستلام الطلب',
+    ap_del_ship: '🚚 شحن لجميع مدن المملكة',
     ap_del_ship_sub: 'يظهر لجميع العملاء بغض النظر عن مدينتهم',
+
 
 
     st_title: 'إعدادات المتجر', st_info: 'معلومات المتجر',
@@ -176,8 +179,11 @@ const T = {
     mp_cancel: 'Cancel',
     ap_del_fast: '⚡ Fast Delivery (within 1-2 hours)',
     ap_del_fast_sub: 'Same city only — visible only to customers in your city',
-    ap_del_ship: '🚚 Nationwide Shipping',
+    ap_del_pickup: '🏠 Personal Pickup (from family premises)',
+    ap_del_pickup_sub: 'Same city only — customer comes to pick up the order',
+    ap_del_ship: '🚚 Shipping to all KSA cities',
     ap_del_ship_sub: 'Visible to all customers regardless of their city',
+
 
 
     st_title: 'Store Settings', st_info: 'Store Information',
@@ -519,29 +525,37 @@ function SalesTab({ profile, t }) {
 
 // ─── Edit Product Modal ─────────────────────────────────────────────────────────
 
+// Derive a 3-state deliveryType from a DB product row.
+// Old rows that used 'local' map to 'fast' (the primary local delivery type).
+function deriveDeliveryType(p) {
+  if (p.delivery_type === 'pickup')     return 'pickup';
+  if (p.delivery_type === 'nationwide') return 'nationwide';
+  if (p.delivery_type === 'fast')       return 'fast';
+  // Legacy: is_perishable=true → 'fast', false → 'nationwide'
+  return p.is_perishable ? 'fast' : 'nationwide';
+}
+
 function EditProductModal({ product, t, onClose, onSaved, showToast }) {
   const [price,        setPrice]       = useState(String(product.price ?? ''));
   const [stock,        setStock]       = useState(String(product.stock ?? ''));
-  const [isPerishable, setIsPerishable] = useState(product.is_perishable ?? false);
+  const [deliveryType, setDeliveryType] = useState(deriveDeliveryType(product));
   const [saving,       setSaving]      = useState(false);
-
-  // Derive delivery type from is_perishable for display
-  const deliveryLabel = isPerishable ? t.ap_del_fast : t.ap_del_ship;
 
   const handleSave = async () => {
     const priceVal = parseFloat(price);
     const stockVal = parseInt(stock);
-    if (isNaN(priceVal) || priceVal < 0) { showToast('يرجى إدخال سعر صحيح', 'error'); return; }
-    if (isNaN(stockVal) || stockVal < 0) { showToast('يرجى إدخال كمية صحيحة', 'error'); return; }
+    if (isNaN(priceVal) || priceVal < 0) { showToast(t.dir === 'rtl' ? 'يرجى إدخال سعر صحيح' : 'Please enter a valid price', 'error'); return; }
+    if (isNaN(stockVal) || stockVal < 0) { showToast(t.dir === 'rtl' ? 'يرجى إدخال كمية صحيحة' : 'Please enter a valid stock', 'error'); return; }
 
+    const isLocal = deliveryType !== 'nationwide';
     setSaving(true);
     const { data, error } = await supabase
       .from('products')
       .update({
         price:         priceVal,
         stock:         stockVal,
-        is_perishable: isPerishable,
-        delivery_type: isPerishable ? 'local' : 'nationwide',
+        is_perishable: isLocal,
+        delivery_type: deliveryType,    // 'fast' | 'pickup' | 'nationwide'
       })
       .eq('id', product.id)
       .select('id, price, stock, is_perishable, delivery_type')
@@ -553,6 +567,7 @@ function EditProductModal({ product, t, onClose, onSaved, showToast }) {
       showToast(`${t.mp_editError}${error.message}`, 'error');
     } else {
       showToast(t.mp_editSuccess, 'success');
+      // Task 2: live-patch — pass the full updated row to parent immediately
       onSaved(data);
       onClose();
     }
@@ -560,14 +575,34 @@ function EditProductModal({ product, t, onClose, onSaved, showToast }) {
 
   const inputCls = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all';
 
+  // Reusable radio card renderer
+  const DeliveryCard = ({ value, icon: Icon, iconActive, label, sub, activeColor, activeBorder, activeBg, activeText }) => {
+    const active = deliveryType === value;
+    return (
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => setDeliveryType(value)}
+        className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
+          ${active ? `${activeBorder} ${activeBg}` : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+      >
+        <Icon size={18} className={`mt-0.5 shrink-0 ${active ? iconActive : 'text-gray-400'}`} />
+        <div className="flex-1">
+          <p className={`text-sm font-bold ${active ? activeText : 'text-gray-700'}`}>{label}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+        </div>
+        {active && <CheckCircle size={16} className={`ms-auto mt-0.5 shrink-0 ${iconActive}`} />}
+      </button>
+    );
+  };
+
   return (
-    /* backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-[fadeInUp_0.2s_ease]">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
@@ -599,53 +634,28 @@ function EditProductModal({ product, t, onClose, onSaved, showToast }) {
             </div>
           </div>
 
-          {/* Delivery Type — radio cards */}
+          {/* Delivery — 3 radio cards */}
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-2">{t.mp_editDelivery}</label>
             <div className="flex flex-col gap-2">
-              {/* Fast delivery */}
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => setIsPerishable(true)}
-                className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
-                  ${isPerishable
-                    ? 'border-amber-400 bg-amber-50'
-                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
-              >
-                <Zap size={18} className={`mt-0.5 shrink-0 ${isPerishable ? 'text-amber-500' : 'text-gray-400'}`} />
-                <div>
-                  <p className={`text-sm font-bold ${isPerishable ? 'text-amber-800' : 'text-gray-700'}`}>
-                    {t.ap_del_fast}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_fast_sub}</p>
-                </div>
-                {isPerishable && (
-                  <CheckCircle size={16} className="ms-auto mt-0.5 shrink-0 text-amber-500" />
-                )}
-              </button>
-
-              {/* Nationwide shipping */}
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => setIsPerishable(false)}
-                className={`flex items-start gap-3 rounded-2xl border-2 px-4 py-3 text-start transition-all duration-150
-                  ${!isPerishable
-                    ? 'border-blue-400 bg-blue-50'
-                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
-              >
-                <Truck size={18} className={`mt-0.5 shrink-0 ${!isPerishable ? 'text-blue-500' : 'text-gray-400'}`} />
-                <div>
-                  <p className={`text-sm font-bold ${!isPerishable ? 'text-blue-800' : 'text-gray-700'}`}>
-                    {t.ap_del_ship}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_ship_sub}</p>
-                </div>
-                {!isPerishable && (
-                  <CheckCircle size={16} className="ms-auto mt-0.5 shrink-0 text-blue-500" />
-                )}
-              </button>
+              <DeliveryCard
+                value="fast"
+                icon={Zap} iconActive="text-amber-500"
+                label={t.ap_del_fast} sub={t.ap_del_fast_sub}
+                activeBorder="border-amber-400" activeBg="bg-amber-50" activeText="text-amber-800"
+              />
+              <DeliveryCard
+                value="pickup"
+                icon={Home} iconActive="text-emerald-600"
+                label={t.ap_del_pickup} sub={t.ap_del_pickup_sub}
+                activeBorder="border-emerald-400" activeBg="bg-emerald-50" activeText="text-emerald-800"
+              />
+              <DeliveryCard
+                value="nationwide"
+                icon={Truck} iconActive="text-blue-500"
+                label={t.ap_del_ship} sub={t.ap_del_ship_sub}
+                activeBorder="border-blue-400" activeBg="bg-blue-50" activeText="text-blue-800"
+              />
             </div>
           </div>
         </div>
@@ -746,17 +756,26 @@ function MyProductsTab({ profile, t, showToast }) {
               <p className="text-xs text-gray-500 mt-0.5">
                 {p.price} {t.mp_sar} · {p.stock} {t.dir === 'rtl' ? 'وحدة' : 'units'}
               </p>
-              {/* Delivery badge */}
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full
-                ${p.is_perishable
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-blue-100 text-blue-700'}`}
-              >
-                {p.is_perishable
-                  ? <><Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast Delivery'}</>
-                  : <><Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}</>
-                }
-              </span>
+              {/* Delivery badge — 3 states */}
+              {(() => {
+                const dt = p.delivery_type ?? (p.is_perishable ? 'fast' : 'nationwide');
+                if (dt === 'pickup') return (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                    <Home size={9} />{t.dir === 'rtl' ? 'استلام شخصي' : 'Pickup'}
+                  </span>
+                );
+                if (dt === 'fast') return (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                    <Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast Delivery'}
+                  </span>
+                );
+                return (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                    <Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}
+                  </span>
+                );
+              })()}
+
             </div>
 
             {/* Edit button */}
@@ -870,7 +889,9 @@ const EMPTY_PRODUCT = {
   name_ar: '', name_en: '',
   description_ar: '', description_en: '',
   price: '', category_id: '', city_id: '',
-  is_perishable: false, delivery_type: 'nationwide', stock: '',
+  // 'fast' | 'pickup' | 'nationwide' — single source of truth for delivery logic
+  // is_perishable in the DB is derived: delivery_type !== 'nationwide'
+  delivery_type: 'nationwide', stock: '',
   weight: '',       // الوزن — optional, numeric (kg)
   sizes: [], colors: [], specs: [],
 };
@@ -923,14 +944,15 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       //     SELECT id FROM producer_profiles WHERE user_id = auth.uid()
       //   ))
       // So we send profile.id (the PK of the profile owned by the current auth user).
+      const isLocal  = form.delivery_type !== 'nationwide';
       const payload = {
         producer_id:   profile.id,               // ← producer_profiles PK (FK target)
         category_id:   parseInt(form.category_id),
         city_id:       parseInt(form.city_id),
         name_ar:       form.name_ar.trim(),
         price:         parseFloat(form.price),
-        is_perishable: form.is_perishable,
-        delivery_type: form.is_perishable ? 'local' : form.delivery_type,
+        is_perishable: isLocal,
+        delivery_type: form.delivery_type,        // 'fast' | 'pickup' | 'nationwide'
         stock:         parseInt(form.stock),
         image_url,
         is_active:     true,
@@ -1101,62 +1123,80 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
         <Divider />
 
-        {/* Delivery Type — radio cards */}
+        {/* Delivery Type — 3 radio cards */}
         <section>
           <SectionTitle icon={Truck} label={t.ap_shipping} />
           <div className="flex flex-col gap-3 mt-4">
 
-            {/* ⚡ Fast Delivery card */}
+            {/* ⚡ Fast Delivery */}
             <button
               type="button"
               disabled={submitting}
-              onClick={() => { set('is_perishable', true); set('delivery_type', 'local'); }}
+              onClick={() => set('delivery_type', 'fast')}
               className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
-                ${form.is_perishable
+                ${form.delivery_type === 'fast'
                   ? 'border-amber-400 bg-amber-50'
                   : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
                 ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
-              <Zap size={20} className={`mt-0.5 shrink-0 ${form.is_perishable ? 'text-amber-500' : 'text-gray-400'}`} />
+              <Zap size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'fast' ? 'text-amber-500' : 'text-gray-400'}`} />
               <div className="flex-1">
-                <p className={`text-sm font-bold ${form.is_perishable ? 'text-amber-800' : 'text-gray-700'}`}>
-                  {t.ap_del_fast}
-                </p>
+                <p className={`text-sm font-bold ${form.delivery_type === 'fast' ? 'text-amber-800' : 'text-gray-700'}`}>{t.ap_del_fast}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_fast_sub}</p>
               </div>
-              {/* Radio indicator */}
               <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
-                ${form.is_perishable ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
-                {form.is_perishable && <span className="w-2 h-2 rounded-full bg-white" />}
+                ${form.delivery_type === 'fast' ? 'border-amber-500 bg-amber-500' : 'border-gray-300 bg-white'}`}>
+                {form.delivery_type === 'fast' && <span className="w-2 h-2 rounded-full bg-white" />}
               </span>
             </button>
 
-            {/* 🚚 Nationwide Shipping card */}
+            {/* 🏠 Personal Pickup */}
             <button
               type="button"
               disabled={submitting}
-              onClick={() => { set('is_perishable', false); set('delivery_type', 'nationwide'); }}
+              onClick={() => set('delivery_type', 'pickup')}
               className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
-                ${!form.is_perishable
+                ${form.delivery_type === 'pickup'
+                  ? 'border-emerald-400 bg-emerald-50'
+                  : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
+                ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <Home size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'pickup' ? 'text-emerald-600' : 'text-gray-400'}`} />
+              <div className="flex-1">
+                <p className={`text-sm font-bold ${form.delivery_type === 'pickup' ? 'text-emerald-800' : 'text-gray-700'}`}>{t.ap_del_pickup}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_pickup_sub}</p>
+              </div>
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
+                ${form.delivery_type === 'pickup' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white'}`}>
+                {form.delivery_type === 'pickup' && <span className="w-2 h-2 rounded-full bg-white" />}
+              </span>
+            </button>
+
+            {/* 🚚 Nationwide Shipping */}
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => set('delivery_type', 'nationwide')}
+              className={`flex items-start gap-4 rounded-2xl border-2 px-5 py-4 text-start transition-all duration-150
+                ${form.delivery_type === 'nationwide'
                   ? 'border-blue-400 bg-blue-50'
                   : 'border-gray-200 bg-gray-50 hover:border-gray-300'}
                 ${submitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
-              <Truck size={20} className={`mt-0.5 shrink-0 ${!form.is_perishable ? 'text-blue-500' : 'text-gray-400'}`} />
+              <Truck size={20} className={`mt-0.5 shrink-0 ${form.delivery_type === 'nationwide' ? 'text-blue-500' : 'text-gray-400'}`} />
               <div className="flex-1">
-                <p className={`text-sm font-bold ${!form.is_perishable ? 'text-blue-800' : 'text-gray-700'}`}>
-                  {t.ap_del_ship}
-                </p>
+                <p className={`text-sm font-bold ${form.delivery_type === 'nationwide' ? 'text-blue-800' : 'text-gray-700'}`}>{t.ap_del_ship}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{t.ap_del_ship_sub}</p>
               </div>
               <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all
-                ${!form.is_perishable ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}>
-                {!form.is_perishable && <span className="w-2 h-2 rounded-full bg-white" />}
+                ${form.delivery_type === 'nationwide' ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}>
+                {form.delivery_type === 'nationwide' && <span className="w-2 h-2 rounded-full bg-white" />}
               </span>
             </button>
 
           </div>
         </section>
+
 
 
         <Divider />
