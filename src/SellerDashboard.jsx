@@ -44,6 +44,7 @@ const T = {
     ap_nameAr: 'اسم المنتج (عربي)', ap_nameEn: 'اسم المنتج (إنجليزي)',
     ap_descAr: 'وصف المنتج (عربي)', ap_descEn: 'وصف المنتج (إنجليزي)',
     ap_price: 'السعر (ريال سعودي)', ap_stock: 'الكمية المتاحة',
+    ap_weight: 'الوزن (كجم)', ap_weightPlaceholder: 'مثال: 0.500',
     ap_classification: 'التصنيف والموقع',
     ap_category: 'الفئة', ap_city: 'المدينة',
     ap_shipping: 'الشحن والتوصيل',
@@ -121,6 +122,7 @@ const T = {
     ap_nameAr: 'Product Name (Arabic)', ap_nameEn: 'Product Name (English)',
     ap_descAr: 'Description (Arabic)', ap_descEn: 'Description (English)',
     ap_price: 'Price (SAR)', ap_stock: 'Available Stock',
+    ap_weight: 'Weight (kg)', ap_weightPlaceholder: 'e.g. 0.500',
     ap_classification: 'Classification & Location',
     ap_category: 'Category', ap_city: 'City',
     ap_shipping: 'Shipping & Delivery',
@@ -642,6 +644,7 @@ const EMPTY_PRODUCT = {
   description_ar: '', description_en: '',
   price: '', category_id: '', city_id: '',
   is_perishable: false, delivery_type: 'nationwide', stock: '',
+  weight: '',       // الوزن — optional, numeric (kg)
   sizes: [], colors: [], specs: [],
 };
 
@@ -686,24 +689,39 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         image_url = urlData.publicUrl;
       }
       setPhase('saving');
+      // ── CRITICAL FIX: producer_id must equal auth.uid() (RLS policy).
+      // profile.id is the producer_profiles PK (different UUID).
+      // profile.user_id is the auth UID that matches auth.uid().
+      //
+      // ── SCHEMA-AWARE PAYLOAD ──
+      // Only include optional columns when they carry actual values.
+      // This prevents 400 "column not found in schema cache" errors on
+      // databases where patch_v2_complete_schema_fix.sql has not been run yet.
       const payload = {
-        producer_id:    profile.id,
-        category_id:    parseInt(form.category_id),
-        city_id:        parseInt(form.city_id),
-        name_ar:        form.name_ar.trim(),
-        name_en:        form.name_en.trim() || null,
-        description_ar: form.description_ar.trim() || null,
-        description_en: form.description_en.trim() || null,
-        price:          parseFloat(form.price),
-        is_perishable:  form.is_perishable,
-        delivery_type:  form.is_perishable ? 'local' : form.delivery_type,
-        stock:          parseInt(form.stock),
+        producer_id:   profile.user_id,          // ← FIXED (was profile.id)
+        category_id:   parseInt(form.category_id),
+        city_id:       parseInt(form.city_id),
+        name_ar:       form.name_ar.trim(),
+        price:         parseFloat(form.price),
+        is_perishable: form.is_perishable,
+        delivery_type: form.is_perishable ? 'local' : form.delivery_type,
+        stock:         parseInt(form.stock),
         image_url,
-        is_active:      true,
+        is_active:     true,
       };
-      if (form.sizes.length)  payload.sizes  = form.sizes;
-      if (form.colors.length) payload.colors = form.colors;
-      if (form.specs.length)  payload.specs  = form.specs;
+      // Optional text columns — only include when the column exists in your schema
+      // (run supabase/patch_v2_complete_schema_fix.sql to add them)
+      const nameEn       = form.name_en.trim();
+      const descAr       = form.description_ar.trim();
+      const descEn       = form.description_en.trim();
+      const weightVal    = form.weight ? parseFloat(form.weight) : null;
+      if (nameEn)                  payload.name_en        = nameEn;
+      if (descAr)                  payload.description_ar = descAr;
+      if (descEn)                  payload.description_en = descEn;
+      if (weightVal !== null)      payload.weight         = weightVal;
+      if (form.sizes.length)       payload.sizes          = form.sizes;
+      if (form.colors.length)      payload.colors         = form.colors;
+      if (form.specs.length)       payload.specs          = form.specs;
 
       const { error: insertError } = await supabase.from('products').insert(payload);
       if (insertError) { showToast(`${t.ap_errSave}${insertError.message}`, 'error'); }
@@ -789,6 +807,25 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
                 <input type="number" min="0" placeholder="0" value={form.stock}
                   onChange={(e) => set('stock', e.target.value)} className={inputErr('stock')} disabled={submitting} />
                 {fieldErrs.stock && <p className="text-xs text-red-500 font-medium">{fieldErrs.stock}</p>}
+              </Field>
+            </div>
+
+            {/* Weight — الوزن */}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={t.ap_weight}>
+                <div className="relative">
+                  <input
+                    type="number" min="0" step="0.001"
+                    placeholder={t.ap_weightPlaceholder}
+                    value={form.weight}
+                    onChange={(e) => set('weight', e.target.value)}
+                    className={inputCls}
+                    disabled={submitting}
+                  />
+                  <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 pointer-events-none">
+                    kg
+                  </span>
+                </div>
               </Field>
             </div>
           </div>

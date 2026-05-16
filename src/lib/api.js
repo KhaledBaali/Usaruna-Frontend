@@ -41,6 +41,13 @@ function normaliseProduct(row) {
   const emoji    = CATEGORY_EMOJI[catSlug]    ?? CATEGORY_EMOJI_BY_ID[catId]    ?? row.emoji    ?? '📦';
   const gradient = CATEGORY_GRADIENT[catSlug] ?? CATEGORY_GRADIENT_BY_ID[catId] ?? row.gradient ?? DEFAULT_GRADIENT;
 
+  // ── Geo-filter source of truth ──
+  // Products have their OWN city_id (where the seller operates / product ships from).
+  // The cities join on the products table resolves this to city name strings.
+  // HomePage compares p.sellerCity (Arabic) against currentCityAr to show/hide perishables.
+  const sellerCityAr = row.cities?.name_ar ?? p?.city_ar ?? p?.city ?? row.sellerCity ?? null;
+  const sellerCityEn = row.cities?.name_en ?? p?.city_en ?? row.sellerCityEn ?? sellerCityAr;
+
   return {
     ...row,
     // ── Display name (ProductCard reads `name` / `nameEn`) ──
@@ -56,11 +63,14 @@ function normaliseProduct(row) {
     // ── Producer / seller metadata ──
     family:       p?.business_name_ar ?? p?.name_ar ?? row.family,
     familyEn:     p?.business_name_en ?? p?.name_en ?? row.familyEn,
-    sellerCity:   row.cities?.name_ar ?? p?.city_ar       ?? p?.city       ?? row.sellerCity,
-    sellerCityEn: row.cities?.name_en ?? p?.city_en       ?? row.sellerCityEn,
+    // ── City: use the product's own cities join (city_id) as primary source ──
+    sellerCity:   sellerCityAr,
+    sellerCityEn: sellerCityEn,
     whatsapp:     p?.whatsapp      ?? row.whatsapp,
     partnerSince: p?.partner_since ?? row.partnerSince,
-    // ── Review defaults (DB products won’t have these yet) ──
+    // ── Advanced attributes ──
+    weight:       row.weight ?? null,
+    // ── Review defaults (DB products won't have these yet) ──
     rating:       row.rating  ?? 0,
     reviews:      row.reviews ?? 0,
   };
