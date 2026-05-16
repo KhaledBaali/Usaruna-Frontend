@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import { useAuth } from './contexts/AuthContext';
+import { supabase } from './supabase';
 import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
 
@@ -358,6 +360,7 @@ function SuccessScreen({ t, lang, isRtl, orderNum }) {
 export default function CheckoutPage() {
   const { lang, dir, toggle, t } = useLang();
   const { items, subtotal, clearCart } = useCart();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const isRtl = dir === 'rtl';
 
@@ -366,6 +369,7 @@ export default function CheckoutPage() {
   const [loading, setLoading]     = useState(false);
   const [done, setDone]           = useState(false);
   const [orderNum, setOrderNum]   = useState('');
+  const [orderError, setOrderError] = useState(null);
 
   const deliveryTotal = items.reduce((s, i) => s + (i.deliveryPrice ?? 0), 0);
   const grandTotal    = subtotal + deliveryTotal;
@@ -388,8 +392,37 @@ export default function CheckoutPage() {
 
   const handlePay = async () => {
     setLoading(true);
+    setOrderError(null);
     await new Promise((res) => setTimeout(res, 1800));
     const num = Math.floor(100000 + Math.random() * 900000).toString();
+
+    if (user) {
+      const { error } = await supabase.rpc('place_order', {
+        p_user_id:        user.id,
+        p_order_number:   num,
+        p_total:          grandTotal,
+        p_delivery_total: deliveryTotal,
+        p_pay_method:     payMethod,
+        p_items:          items.map((i) => ({
+          product_id:      i.id,
+          name_ar:         i.name       ?? null,
+          name_en:         i.nameEn     ?? null,
+          price:           i.price,
+          qty:             i.qty,
+          emoji:           i.emoji      ?? null,
+          gradient:        i.gradient   ?? null,
+          delivery_option: i.deliveryOption ?? null,
+          delivery_price:  i.deliveryPrice  ?? 0,
+        })),
+      });
+
+      if (error) {
+        setOrderError(error.message);
+        setLoading(false);
+        return;
+      }
+    }
+
     setOrderNum(num);
     clearCart();
     setDone(true);
@@ -463,6 +496,12 @@ export default function CheckoutPage() {
               <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1">
                 <Shield size={11} /> {t('checkout_secureNote')}
               </p>
+
+              {orderError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-600 font-medium text-center">
+                  {isRtl ? 'فشل في تسجيل الطلب: ' : 'Order failed: '}{orderError}
+                </div>
+              )}
             </div>
 
             {/* Right: order summary */}

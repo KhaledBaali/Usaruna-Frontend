@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  User, ChevronDown, LogOut, LayoutDashboard, ShoppingBag, UserCircle,
+  User, ChevronDown, LogOut, LayoutDashboard, ShoppingBag, UserCircle, Heart,
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useLang } from './contexts/LanguageContext';
@@ -77,7 +77,7 @@ export default function AccountMenu() {
             </div>
 
             <button
-              onClick={() => { close(); navigate('/login'); }}
+              onClick={() => { close(); navigate('/account'); }}
               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-start"
             >
               <UserCircle size={15} className="text-gray-400 shrink-0" />
@@ -85,11 +85,19 @@ export default function AccountMenu() {
             </button>
 
             <button
-              onClick={() => { close(); }}
+              onClick={() => { close(); navigate('/account?tab=orders'); }}
               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-start"
             >
               <ShoppingBag size={15} className="text-gray-400 shrink-0" />
               {lang === 'ar' ? 'طلباتي' : 'My Orders'}
+            </button>
+
+            <button
+              onClick={() => { close(); navigate('/account?tab=wishlist'); }}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-start"
+            >
+              <Heart size={15} className="text-red-400 shrink-0" />
+              {lang === 'ar' ? 'المفضلة' : 'Wishlist'}
             </button>
 
             {isProducer && (

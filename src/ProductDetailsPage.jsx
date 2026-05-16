@@ -11,6 +11,7 @@ import LocationPicker from './LocationPicker';
 // Products removed for strict live DB tracking
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import { useWishlist } from './contexts/WishlistContext';
 import { fetchProductById, fetchReviews, submitReview } from './lib/api';
 import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
 import AccountMenu from './AccountMenu';
@@ -71,6 +72,7 @@ export default function ProductDetailsPage() {
   const navigate         = useNavigate();
   const { lang, dir, toggle, t } = useLang();
   const { addItem, totalCount } = useCart();
+  const { toggle: toggleWishlist, isLiked } = useWishlist();
 
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -104,7 +106,6 @@ export default function ProductDetailsPage() {
   const defaultColor = product?.colors?.[0]?.id ?? null;
 
   const [selectedImage,  setSelectedImage]  = useState(0);
-  const [liked,          setLiked]          = useState(false);
   const [quantity,       setQuantity]       = useState(1);
   const [added,          setAdded]          = useState(false);
   const [deliveryOption, setDeliveryOption] = useState(
@@ -216,8 +217,9 @@ export default function ProductDetailsPage() {
   };
 
   const handleLike = () => {
-    const next = !liked;
-    setLiked(next);
+    if (!product) return;
+    const next = !isLiked(product.id);
+    toggleWishlist(product);
     showToast(
       next ? t('toast_addedWishlist') : t('toast_removedWishlist'),
       next ? '❤️' : '🤍',
@@ -424,7 +426,7 @@ export default function ProductDetailsPage() {
                 </span>
               )}
               <button onClick={handleLike} className="absolute top-4 left-4 bg-white rounded-full p-2.5 shadow-md hover:scale-110 transition-transform z-10">
-                <Heart size={17} className={liked ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
+                <Heart size={17} className={isLiked(product?.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
               </button>
               <button onClick={handleShare} className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-md hover:scale-110 transition-transform z-10">
                 <Share2 size={16} className="text-gray-600" />

@@ -8,6 +8,7 @@ import {
 // Mock data removed in favor of live DB
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import { useWishlist } from './contexts/WishlistContext';
 import { fetchProducts } from './lib/api';
 import { supabase } from './supabase';
 import AccountMenu from './AccountMenu';
@@ -46,7 +47,8 @@ function DeliveryTag({ isPerishable }) {
 
 function ProductCard({ product, onAddToCart }) {
   const { lang, t } = useLang();
-  const [liked,     setLiked]     = useState(false);
+  const { toggle, isLiked } = useWishlist();
+  const liked    = isLiked(product.id);
   const [added,     setAdded]     = useState(false);
   const [imgError,  setImgError]  = useState(false);
   const navigate = useNavigate();
@@ -88,7 +90,7 @@ function ProductCard({ product, onAddToCart }) {
           </span>
         )}
         <button
-          onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
+          onClick={(e) => { e.stopPropagation(); toggle(product); }}
           className="absolute top-3.5 left-3.5 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform z-10"
           aria-label={t('card_wishlist')}
         >
