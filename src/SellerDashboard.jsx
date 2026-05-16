@@ -7,6 +7,7 @@ import {
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
   Printer, Plus, Globe, Pencil, Zap, Home, Inbox, ChevronDown,
   Clock, Circle, RefreshCw, Check, CreditCard, Search, Phone, MessageCircle,
+  Upload, FileImage,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
