@@ -6,7 +6,7 @@ import {
   ShoppingBag, Layers, Truck, Archive, ChevronRight,
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
   Printer, Plus, Globe, Pencil, Zap, Home, Inbox, ChevronDown,
-  Clock, Circle, RefreshCw,
+  Clock, Circle, RefreshCw, Check, CreditCard, Search, Phone, MessageCircle,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -122,6 +122,31 @@ const T = {
     ord_updateOk: 'تم تحديث الحالة ✓', ord_updateErr: 'خطأ في التحديث: ',
     ord_del_fast: 'توصيل سريع', ord_del_pickup: 'استلام شخصي', ord_del_ship: 'شحن وطني',
     ord_loading: 'جاري تحميل الطلبات…',
+    ord_s_preparing:       'قيد التحضير',
+    ord_s_ready:           'جاهز للاستلام',
+    ord_s_out_for_delivery:'خرج للتوصيل',
+    ord_stats_today:     'طلبات اليوم',
+    ord_stats_pending:   'قيد الانتظار',
+    ord_stats_preparing: 'قيد التحضير',
+    ord_stats_done:      'مكتملة',
+    ord_stats_revenue:   'أرباح اليوم',
+    ord_accept:    'قبول الطلب',
+    ord_reject:    'رفض الطلب',
+    ord_contact:   'تواصل مع العميل',
+    ord_details:   'التفاصيل',
+    ord_search:    'ابحث برقم الطلب أو اسم العميل...',
+    ord_filterAll: 'جميع الحالات',
+    ord_customer:  'اسم العميل',
+    ord_phone:     'رقم الجوال',
+    ord_payment:   'طريقة الدفع',
+    ord_address:   'عنوان التوصيل',
+    ord_prepTime:  'مدة التحضير',
+    ord_refresh:   'تحديث',
+    ord_results:   'نتيجة',
+    ord_noResults: 'لا توجد نتائج',
+    ord_noResultsDesc: 'حاول تغيير معايير البحث',
+    ord_hide:      'إخفاء',
+    ord_clearFilters: 'مسح',
   },
   en: {
     dir: 'ltr', langBtn: 'العربية',
@@ -230,6 +255,31 @@ const T = {
     ord_updateOk: 'Status updated ✓', ord_updateErr: 'Update error: ',
     ord_del_fast: 'Fast Delivery', ord_del_pickup: 'Pickup', ord_del_ship: 'Nationwide',
     ord_loading: 'Loading orders…',
+    ord_s_preparing:       'Preparing',
+    ord_s_ready:           'Ready',
+    ord_s_out_for_delivery:'Out for Delivery',
+    ord_stats_today:     "Today's Orders",
+    ord_stats_pending:   'Pending',
+    ord_stats_preparing: 'Preparing',
+    ord_stats_done:      'Completed',
+    ord_stats_revenue:   "Today's Revenue",
+    ord_accept:    'Accept Order',
+    ord_reject:    'Reject Order',
+    ord_contact:   'Contact Customer',
+    ord_details:   'Details',
+    ord_search:    'Search by order # or customer name...',
+    ord_filterAll: 'All Statuses',
+    ord_customer:  'Customer Name',
+    ord_phone:     'Phone Number',
+    ord_payment:   'Payment Method',
+    ord_address:   'Delivery Address',
+    ord_prepTime:  'Prep Time',
+    ord_refresh:   'Refresh',
+    ord_results:   'results',
+    ord_noResults: 'No results',
+    ord_noResultsDesc: 'Try changing your search criteria',
+    ord_hide:      'Hide',
+    ord_clearFilters: 'Clear',
   },
 };
 
@@ -1515,15 +1565,20 @@ export default function SellerDashboard() {
 
 // ─── Producer Orders Tab ────────────────────────────────────────────────────────
 
-const ORDER_STATUSES = ['pending','confirmed','processing','shipped','delivered','cancelled'];
+const ORDER_STATUSES = [
+  'pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled',
+];
 
 const STATUS_META = {
-  pending:    { ar: 'معلق',          en: 'Pending',    dot: 'bg-gray-400',    badge: 'bg-gray-100 text-gray-600 border-gray-200' },
-  confirmed:  { ar: 'مؤكد',          en: 'Confirmed',  dot: 'bg-blue-500',    badge: 'bg-blue-50 text-blue-700 border-blue-200'  },
-  processing: { ar: 'قيد التجهيز',  en: 'Processing', dot: 'bg-amber-500',   badge: 'bg-amber-50 text-amber-700 border-amber-200'},
-  shipped:    { ar: 'تم الشحن',     en: 'Shipped',    dot: 'bg-indigo-500',  badge: 'bg-indigo-50 text-indigo-700 border-indigo-200'},
-  delivered:  { ar: 'تم التوصيل',  en: 'Delivered',  dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
-  cancelled:  { ar: 'ملغي',         en: 'Cancelled',  dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 border-red-200'   },
+  pending:          { ar: 'قيد الانتظار',    en: 'Pending',          dot: 'bg-yellow-400',  badge: 'bg-yellow-50 text-yellow-700 border-yellow-300',  card: 'border-yellow-200'  },
+  confirmed:        { ar: 'تم التأكيد',      en: 'Confirmed',        dot: 'bg-blue-500',    badge: 'bg-blue-50 text-blue-700 border-blue-300',        card: 'border-blue-200'    },
+  preparing:        { ar: 'قيد التحضير',    en: 'Preparing',        dot: 'bg-orange-500',  badge: 'bg-orange-50 text-orange-700 border-orange-300',  card: 'border-orange-200'  },
+  processing:       { ar: 'قيد التحضير',    en: 'Preparing',        dot: 'bg-orange-500',  badge: 'bg-orange-50 text-orange-700 border-orange-300',  card: 'border-orange-200'  },
+  ready:            { ar: 'جاهز للاستلام',  en: 'Ready',            dot: 'bg-purple-500',  badge: 'bg-purple-50 text-purple-700 border-purple-300',  card: 'border-purple-200'  },
+  out_for_delivery: { ar: 'خرج للتوصيل',   en: 'Out for Delivery', dot: 'bg-cyan-500',    badge: 'bg-cyan-50 text-cyan-700 border-cyan-300',        card: 'border-cyan-200'    },
+  shipped:          { ar: 'خرج للتوصيل',   en: 'Out for Delivery', dot: 'bg-cyan-500',    badge: 'bg-cyan-50 text-cyan-700 border-cyan-300',        card: 'border-cyan-200'    },
+  delivered:        { ar: 'تم التسليم',     en: 'Delivered',        dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-300',card: 'border-emerald-200' },
+  cancelled:        { ar: 'ملغي',           en: 'Cancelled',        dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 border-red-200',           card: 'border-red-200'     },
 };
 
 const DELIVERY_ICONS = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
@@ -1576,51 +1631,85 @@ function StatusDropdown({ currentStatus, onUpdate, lang, t }) {
   );
 }
 
-function ProducerOrdersTab({ t, showToast, user, lang }) {
-  const isRtl = t.dir === 'rtl';
-  const [orderItems, setOrderItems] = useState([]);
-  const [loading, setLoading]       = useState(true);
+// ─── InfoCard helper ─────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!user) return;
+function InfoCard({ icon, label, value, isRtl, ltr = false }) {
+  return (
+    <div className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-start gap-2">
+      <span className="text-gray-400 shrink-0 mt-0.5">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] text-gray-400 font-semibold">{label}</p>
+        <p className={`text-xs font-bold text-gray-700 break-words ${ltr ? 'dir-ltr' : ''}`}>{value || '—'}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── ProducerOrdersTab ───────────────────────────────────────────────────────
+
+function ProducerOrdersTab({ t, showToast, profile }) {
+  const isRtl = t.dir === 'rtl';
+  const lang  = isRtl ? 'ar' : 'en';
+
+  const [orderItems,    setOrderItems]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState('');
+  const [filterStatus,  setFilterStatus]  = useState('all');
+  const [expandedId,    setExpandedId]    = useState(null);
+
+  const fetchOrders = useCallback(() => {
+    if (!profile?.id) return;
+    setLoading(true);
     supabase
       .from('order_items')
-      // Fetch item-level status + parent order metadata
-      .select('*, orders(id, order_number, created_at, total_amount)')
-      .eq('producer_id', user.id)
+      .select('*, orders(id, order_number, created_at, total_amount, payment_method, customer_name, customer_phone, delivery_address)')
+      .eq('producer_id', profile.id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) console.error('[ProducerOrdersTab]', error);
         setOrderItems(data ?? []);
         setLoading(false);
       });
-  }, [user]);
+  }, [profile?.id]);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
   const handleStatusUpdate = async (itemId, newStatus) => {
-    // Optimistic update — patch item.status directly (item-level)
-    setOrderItems((prev) =>
-      prev.map((item) =>
-        item.id === itemId ? { ...item, status: newStatus } : item
-      )
-    );
-    const { error } = await supabase
-      .from('order_items')
-      .update({ status: newStatus })
-      .eq('id', itemId);          // ← targets the specific item row only
+    setOrderItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: newStatus } : i));
+    const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
     if (error) {
       showToast(t.ord_updateErr + error.message, 'error');
-      // Rollback: re-fetch to restore authoritative state
-      supabase
-        .from('order_items')
-        .select('*, orders(id, order_number, created_at, total_amount)')
-        .eq('producer_id', user.id)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => setOrderItems(data ?? []));
+      fetchOrders(); // rollback via re-fetch
     } else {
       showToast(t.ord_updateOk, 'success');
     }
   };
 
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const todayStr   = new Date().toDateString();
+  const todayItems = orderItems.filter((i) =>
+    new Date(i.orders?.created_at ?? i.created_at ?? 0).toDateString() === todayStr
+  );
+  const pendingCount   = orderItems.filter((i) => (i.status ?? 'pending') === 'pending').length;
+  const preparingCount = orderItems.filter((i) => ['preparing','processing'].includes(i.status ?? '')).length;
+  const doneCount      = orderItems.filter((i) => i.status === 'delivered').length;
+  const dailyRevenue   = todayItems
+    .filter((i) => i.status === 'delivered')
+    .reduce((s, i) => s + (i.price_at_purchase ?? 0) * (i.quantity ?? 1), 0);
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  const filtered = orderItems.filter((item) => {
+    const order   = item.orders ?? {};
+    const name    = isRtl ? (item.name_ar ?? '') : (item.name_en ?? item.name_ar ?? '');
+    const orderNum = String(order.order_number ?? item.id ?? '');
+    const custName = String(order.customer_name ?? '');
+    const q = search.toLowerCase();
+    const matchSearch = !q || name.toLowerCase().includes(q) || orderNum.toLowerCase().includes(q) || custName.toLowerCase().includes(q);
+    const matchStatus = filterStatus === 'all' || (item.status ?? 'pending') === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32 gap-3 text-gray-400">
@@ -1630,81 +1719,267 @@ function ProducerOrdersTab({ t, showToast, user, lang }) {
     );
   }
 
-  if (!orderItems.length) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 text-center">
-        <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mb-5">
-          <Inbox size={32} className="text-blue-200" />
-        </div>
-        <h3 className="text-lg font-extrabold text-gray-700 mb-2">{t.ord_empty}</h3>
-        <p className="text-sm text-gray-400 max-w-xs leading-relaxed">{t.ord_emptyDesc}</p>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <h2 className="text-xl font-extrabold text-gray-800 mb-6">{t.ord_title}</h2>
-      <div className="flex flex-col gap-4">
-        {orderItems.map((item) => {
-          const name     = isRtl ? (item.name_ar ?? '—') : (item.name_en ?? item.name_ar ?? '—');
-          const order    = item.orders ?? {};
-          const date     = order.created_at
-            ? new Date(order.created_at).toLocaleDateString(
+    <div className="space-y-6">
+
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2">
+          <Inbox size={20} className="text-blue-700" />
+          {t.ord_title}
+          {orderItems.length > 0 && (
+            <span className="text-sm font-bold text-blue-500 bg-blue-50 rounded-full px-2.5 py-0.5">
+              {orderItems.length}
+            </span>
+          )}
+        </h2>
+        <button
+          onClick={fetchOrders}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-700 font-semibold transition-colors border border-gray-200 hover:border-blue-300 rounded-xl px-3 py-1.5"
+        >
+          <RefreshCw size={13} /> {t.ord_refresh}
+        </button>
+      </div>
+
+      {/* ── Stats cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: t.ord_stats_today,     value: todayItems.length,                           icon: '📋', bg: 'bg-blue-50',    text: 'text-blue-700'    },
+          { label: t.ord_stats_pending,   value: pendingCount,                                icon: '⏳', bg: 'bg-yellow-50',  text: 'text-yellow-700'  },
+          { label: t.ord_stats_preparing, value: preparingCount,                              icon: '👨‍🍳', bg: 'bg-orange-50',  text: 'text-orange-700'  },
+          { label: t.ord_stats_done,      value: doneCount,                                   icon: '✅', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+          { label: t.ord_stats_revenue,   value: `${dailyRevenue.toFixed(0)} ${t.ord_sar}`,  icon: '💰', bg: 'bg-violet-50',  text: 'text-violet-700'  },
+        ].map(({ label, value, icon, bg, text }) => (
+          <div key={label} className={`${bg} rounded-2xl p-4 flex flex-col gap-1`}>
+            <span className="text-xl">{icon}</span>
+            <p className={`text-lg font-extrabold leading-none ${text}`}>{value}</p>
+            <p className={`text-[11px] font-semibold opacity-70 leading-snug ${text}`}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Search + filter bar ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3 items-center">
+        <div className="flex-1 min-w-[180px] relative">
+          <Search
+            size={14}
+            className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none`}
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t.ord_search}
+            dir={isRtl ? 'rtl' : 'ltr'}
+            className={`w-full border border-gray-200 rounded-xl py-2.5 text-sm placeholder-gray-400
+              focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50
+              ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'}`}
+          />
+        </div>
+
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50"
+        >
+          <option value="all">{t.ord_filterAll}</option>
+          {ORDER_STATUSES.filter((s) => s !== 'processing' && s !== 'shipped').map((s) => {
+            const sm = STATUS_META[s];
+            return <option key={s} value={s}>{lang === 'ar' ? sm.ar : sm.en}</option>;
+          })}
+        </select>
+
+        {(search || filterStatus !== 'all') && (
+          <button
+            onClick={() => { setSearch(''); setFilterStatus('all'); }}
+            className="text-xs text-gray-400 hover:text-red-500 font-semibold transition-colors flex items-center gap-1 border border-gray-200 hover:border-red-200 rounded-xl px-2.5 py-2"
+          >
+            <X size={12} /> {t.ord_clearFilters}
+          </button>
+        )}
+
+        <p className="text-xs text-gray-400 ms-auto">
+          {filtered.length} {t.ord_results}
+        </p>
+      </div>
+
+      {/* ── Empty state ── */}
+      {filtered.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mb-5">
+            <Inbox size={32} className="text-blue-200" />
+          </div>
+          <h3 className="text-lg font-extrabold text-gray-700 mb-2">
+            {search || filterStatus !== 'all' ? t.ord_noResults : t.ord_empty}
+          </h3>
+          <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
+            {search || filterStatus !== 'all' ? t.ord_noResultsDesc : t.ord_emptyDesc}
+          </p>
+        </div>
+      )}
+
+      {/* ── Order cards ── */}
+      <div className="space-y-4">
+        {filtered.map((item) => {
+          const name      = isRtl ? (item.name_ar ?? '—') : (item.name_en ?? item.name_ar ?? '—');
+          const order     = item.orders ?? {};
+          const status    = item.status ?? 'pending';
+          const sm        = STATUS_META[status] ?? STATUS_META.pending;
+          const isExpanded = expandedId === item.id;
+
+          const dateStr = (order.created_at ?? item.created_at)
+            ? new Date(order.created_at ?? item.created_at).toLocaleString(
                 isRtl ? 'ar-SA' : 'en-US',
-                { year: 'numeric', month: 'short', day: 'numeric' }
+                { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
               )
             : '—';
-          const delivOpt = item.delivery_option ?? 'nationwide';
+
+          const delivOpt  = item.delivery_option ?? 'nationwide';
           const delivIcon = DELIVERY_ICONS[delivOpt] ?? '📦';
-          const delivLabel = delivOpt === 'fast' ? t.ord_del_fast
-            : delivOpt === 'pickup' ? t.ord_del_pickup
-            : t.ord_del_ship;
+          const delivLabel = {
+            fast:             isRtl ? 'توصيل سريع' : 'Fast Delivery',
+            pickup:           isRtl ? 'استلام شخصي' : 'Self Pickup',
+            seller_delivery:  isRtl ? 'توصيل من البائع' : 'Seller Delivery',
+            third_party:      isRtl ? 'شركة شحن' : 'Shipping Co.',
+            nationwide:       isRtl ? 'شحن وطني' : 'Nationwide',
+          }[delivOpt] ?? (isRtl ? 'توصيل' : 'Delivery');
+
+          const payLabel = {
+            cod:   isRtl ? 'الدفع عند الاستلام' : 'Cash on Delivery',
+            apple: 'Apple Pay',
+            card:  isRtl ? 'بطاقة تجريبية' : 'Demo Card',
+          }[order.payment_method ?? ''] ?? (order.payment_method ?? '—');
+
           const lineTotal = (item.price_at_purchase ?? 0) * (item.quantity ?? 1);
 
+          // Status flow for "advance to next" button
+          const FLOW = ['pending','confirmed','preparing','ready','out_for_delivery','delivered'];
+          const currentIdx = FLOW.indexOf(status);
+          const nextStatus = currentIdx >= 0 && currentIdx < FLOW.length - 1 ? FLOW[currentIdx + 1] : null;
+
           return (
-            <div key={item.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
-              {/* Header row */}
-              <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-bold text-blue-700">
-                    {t.ord_orderNum}{order.order_number ?? '—'}
+            <div
+              key={item.id}
+              className={`bg-white rounded-3xl border-2 shadow-sm transition-all duration-200 overflow-hidden ${sm.card ?? 'border-gray-200'}`}
+            >
+              {/* ── Card header ── */}
+              <div className="px-5 py-4 flex items-center justify-between gap-3 flex-wrap border-b border-gray-50">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <p className="text-sm font-extrabold text-blue-800">
+                    {t.ord_orderNum}{order.order_number ?? item.id?.slice(0,8) ?? '—'}
                   </p>
+                  <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${sm.badge}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${sm.dot} shrink-0`} />
+                    {lang === 'ar' ? sm.ar : sm.en}
+                  </span>
                   <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                    <Clock size={10} />{date}
+                    <Clock size={10} />{dateStr}
                   </p>
                 </div>
-                <StatusDropdown
-                  currentStatus={item.status ?? 'confirmed'}   // ← item-level status
-                  onUpdate={(s) => handleStatusUpdate(item.id, s)}
-                  lang={isRtl ? 'ar' : 'en'}
-                  t={t}
-                />
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                  className="text-xs text-gray-400 hover:text-blue-700 font-semibold flex items-center gap-1 transition-colors"
+                >
+                  {isExpanded ? t.ord_hide : t.ord_details}
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
               </div>
 
-              {/* Product row */}
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
-                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'}
-                  flex items-center justify-center text-xl shrink-0`}>
-                  {item.emoji ?? '📦'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-xs text-gray-500">
-                      ×{item.quantity} · {Number(item.price_at_purchase).toFixed(0)} {t.ord_sar}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
-                      {delivIcon} {delivLabel}
-                    </span>
+              {/* ── Product row (always visible) ── */}
+              <div className="px-5 py-4">
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-2xl shrink-0 select-none`}>
+                    {item.emoji ?? '📦'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs text-gray-500 font-medium">
+                        ×{item.quantity ?? 1} · {Number(item.price_at_purchase ?? 0).toFixed(0)} {t.ord_sar}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                        {delivIcon} {delivLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-end">
+                    <p className="text-xl font-extrabold text-blue-900">{lineTotal.toFixed(0)}</p>
+                    <p className="text-[10px] text-gray-400">{t.ord_sar}</p>
                   </div>
                 </div>
-                <div className="shrink-0 text-end">
-                  <p className="text-base font-extrabold text-blue-900">
-                    {lineTotal.toFixed(0)}
+              </div>
+
+              {/* ── Expanded details ── */}
+              {isExpanded && (
+                <div className="px-5 pb-4 space-y-3 border-t border-gray-100 pt-3">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                    {isRtl ? 'تفاصيل العميل والتوصيل' : 'Customer & Delivery Details'}
                   </p>
-                  <p className="text-[10px] text-gray-400">{t.ord_sar}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <InfoCard icon={<User size={13} />}       label={t.ord_customer} value={order.customer_name}    isRtl={isRtl} />
+                    <InfoCard icon={<Phone size={13} />}      label={t.ord_phone}    value={order.customer_phone}   isRtl={isRtl} ltr />
+                    <InfoCard icon={<CreditCard size={13} />} label={t.ord_payment}  value={payLabel}               isRtl={isRtl} />
+                    {order.delivery_address && (
+                      <InfoCard icon={<MapPin size={13} />}   label={t.ord_address}  value={order.delivery_address} isRtl={isRtl} />
+                    )}
+                  </div>
                 </div>
+              )}
+
+              {/* ── Action buttons ── */}
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-2 flex-wrap bg-gray-50/50">
+                {/* Accept (pending only) */}
+                {status === 'pending' && (
+                  <button
+                    onClick={() => handleStatusUpdate(item.id, 'confirmed')}
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
+                  >
+                    <Check size={13} /> {t.ord_accept}
+                  </button>
+                )}
+
+                {/* Reject (pending/confirmed) */}
+                {['pending','confirmed'].includes(status) && (
+                  <button
+                    onClick={() => handleStatusUpdate(item.id, 'cancelled')}
+                    className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+                  >
+                    <X size={13} /> {t.ord_reject}
+                  </button>
+                )}
+
+                {/* Advance to next status */}
+                {nextStatus && status !== 'pending' && (
+                  <button
+                    onClick={() => handleStatusUpdate(item.id, nextStatus)}
+                    className="flex items-center gap-1.5 bg-blue-900 hover:bg-blue-800 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
+                  >
+                    <RefreshCw size={13} />
+                    {isRtl
+                      ? `→ ${STATUS_META[nextStatus]?.ar}`
+                      : `→ ${STATUS_META[nextStatus]?.en}`}
+                  </button>
+                )}
+
+                {/* Full status dropdown (manual override) */}
+                <StatusDropdown
+                  currentStatus={status}
+                  onUpdate={(s) => handleStatusUpdate(item.id, s)}
+                  lang={lang}
+                  t={t}
+                />
+
+                {/* Contact via WhatsApp */}
+                {order.customer_phone && (
+                  <a
+                    href={`https://wa.me/${String(order.customer_phone).replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ms-auto flex items-center gap-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+                  >
+                    <MessageCircle size={13} /> {t.ord_contact}
+                  </a>
+                )}
               </div>
             </div>
           );
@@ -1822,7 +2097,7 @@ function ProducerOrdersTab({ t, showToast, user, lang }) {
         <main className="flex-1 overflow-y-auto p-5 lg:p-10 pb-20 md:pb-10">
           {activeTab === 'overview'    && <OverviewTab    profile={profile} onNavigate={setActiveTab} t={t} cities={cities} />}
           {activeTab === 'sales'       && <SalesTab       profile={profile} t={t} />}
-          {activeTab === 'orders'      && <ProducerOrdersTab profile={profile} t={t} showToast={showToast} user={user} lang={t.dir === 'rtl' ? 'ar' : 'en'} />}
+          {activeTab === 'orders'      && <ProducerOrdersTab profile={profile} t={t} showToast={showToast} />}
           {activeTab === 'add-product' && <AddProductForm profile={profile} cities={cities} categories={categories} showToast={showToast} t={t} />}
           {activeTab === 'my-products' && <MyProductsTab  profile={profile} t={t} showToast={showToast} />}
           {activeTab === 'settings'    && <SettingsTab    profile={profile} cities={cities} showToast={showToast} t={t} navigate={navigate} />}
