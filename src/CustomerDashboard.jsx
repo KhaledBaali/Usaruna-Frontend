@@ -148,7 +148,7 @@ const ORDER_STATUS_META = {
   cancelled:  { arLabel: 'ملغي',        enLabel: 'Cancelled',  dotCls: 'bg-red-400',     badgeCls: 'bg-red-50 text-red-600 border-red-200'      },
 };
 
-const DELIVERY_OPTION_ICON = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
+const DELIVERY_OPTION_ICON = { seller_delivery: '🛵', fast: '🛵', pickup: '🏠', third_party: '📦', nationwide: '📦' };
 
 // Status priority for deriving the 'worst' status across all items in one order
 // Used to tint the order-card top stripe without a single canonical status
@@ -290,24 +290,28 @@ function OrdersTab({ t, lang, isRtl, user }) {
                     const lineTotal = (item.price_at_purchase ?? 0) * (item.quantity ?? 1);
                     const delivOpt  = item.delivery_option;
                     const delivIcon = delivOpt ? (DELIVERY_OPTION_ICON[delivOpt] ?? '📦') : null;
-                    const delivLabel = delivOpt === 'fast'
-                      ? (lang === 'ar' ? 'توصيل سريع' : 'Fast Delivery')
-                      : delivOpt === 'pickup'
-                      ? (lang === 'ar' ? 'استلام شخصي' : 'Pickup')
-                      : delivOpt
-                      ? (lang === 'ar' ? 'شحن وطني' : 'Nationwide')
-                      : null;
+                    const DELIV_LABELS = {
+                      seller_delivery: lang === 'ar' ? 'توصيل من البائع' : 'Seller Delivery',
+                      fast:            lang === 'ar' ? 'توصيل من البائع' : 'Seller Delivery',
+                      pickup:          lang === 'ar' ? 'استلام شخصي' : 'Pickup',
+                      third_party:     lang === 'ar' ? 'شركة شحن' : 'Shipping Co.',
+                      nationwide:      lang === 'ar' ? 'شركة شحن' : 'Shipping Co.',
+                    };
+                    const delivLabel = delivOpt ? (DELIV_LABELS[delivOpt] ?? delivOpt) : null;
 
                     return (
                       <div key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-2xl">
-                        {/* Emoji thumbnail */}
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0 mt-0.5`}>
+                        {/* Clickable thumbnail */}
+                        <Link
+                          to={`/product/${item.product_id}`}
+                          className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0 mt-0.5 hover:opacity-80 transition-opacity`}
+                        >
                           {item.emoji ?? '📦'}
-                        </div>
+                        </Link>
 
                         {/* Product info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
+                          <Link to={`/product/${item.product_id}`} className="text-sm font-bold text-gray-800 truncate hover:text-blue-700 transition-colors block">{name}</Link>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-xs text-gray-500">
                               ×{item.quantity} · {Number(item.price_at_purchase ?? 0).toFixed(0)} {t.sar}

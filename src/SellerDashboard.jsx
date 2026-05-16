@@ -85,11 +85,11 @@ const T = {
     mp_editSave: 'حفظ التغييرات', mp_editSaving: 'جاري الحفظ…',
     mp_editSuccess: 'تم تحديث المنتج ✓', mp_editError: 'خطأ في التحديث: ',
     mp_cancel: 'إلغاء',
-    ap_del_fast: '⚡ توصيل سريع (خلال ساعة-ساعتين)',
+    ap_del_fast: '🛵 توصيل من البائع (خلال ساعة-ساعتين)',
     ap_del_fast_sub: 'حصراً لنفس المدينة — يظهر فقط لعملاء مدينتك',
     ap_del_pickup: '🏠 استلام شخصي (من مقر الأسرة)',
     ap_del_pickup_sub: 'حصراً لنفس المدينة — يحضر العميل لاستلام الطلب',
-    ap_del_ship: '🚚 شحن لجميع مدن المملكة',
+    ap_del_ship: '📦 شحن لجميع مدن المملكة',
     ap_del_ship_sub: 'يظهر لجميع العملاء بغض النظر عن مدينتهم',
     ap_deliveryHint: 'اختر طريقة واحدة أو أكثر (بحد أقصى ثلاث)',
     ap_errDelivery: 'يرجى اختيار طريقة توصيل واحدة على الأقل',
@@ -129,7 +129,7 @@ const T = {
     ord_s_processing: 'قيد التجهيز', ord_s_shipped: 'تم الشحن',
     ord_s_delivered: 'تم التوصيل', ord_s_cancelled: 'ملغي',
     ord_updateOk: 'تم تحديث الحالة ✓', ord_updateErr: 'خطأ في التحديث: ',
-    ord_del_fast: 'توصيل سريع', ord_del_pickup: 'استلام شخصي', ord_del_ship: 'شحن وطني',
+    ord_del_fast: 'توصيل من البائع', ord_del_pickup: 'استلام شخصي', ord_del_ship: 'شركة شحن',
     ord_loading: 'جاري تحميل الطلبات…',
     ord_s_preparing:       'قيد التحضير',
     ord_s_ready:           'جاهز للاستلام',
@@ -226,11 +226,11 @@ const T = {
     mp_editSave: 'Save Changes', mp_editSaving: 'Saving…',
     mp_editSuccess: 'Product updated ✓', mp_editError: 'Update error: ',
     mp_cancel: 'Cancel',
-    ap_del_fast: '⚡ Fast Delivery (within 1-2 hours)',
+    ap_del_fast: '🛵 Seller Delivery (within 1-2 hours)',
     ap_del_fast_sub: 'Same city only — visible only to customers in your city',
     ap_del_pickup: '🏠 Personal Pickup (from family premises)',
     ap_del_pickup_sub: 'Same city only — customer comes to pick up the order',
-    ap_del_ship: '🚚 Shipping to all KSA cities',
+    ap_del_ship: '📦 Shipping to all KSA cities',
     ap_del_ship_sub: 'Visible to all customers regardless of their city',
     ap_deliveryHint: 'Choose one or more options (up to three)',
     ap_errDelivery: 'Please select at least one delivery method',
@@ -270,7 +270,7 @@ const T = {
     ord_s_processing: 'Processing', ord_s_shipped: 'Shipped',
     ord_s_delivered: 'Delivered', ord_s_cancelled: 'Cancelled',
     ord_updateOk: 'Status updated ✓', ord_updateErr: 'Update error: ',
-    ord_del_fast: 'Fast Delivery', ord_del_pickup: 'Pickup', ord_del_ship: 'Nationwide',
+    ord_del_fast: 'Seller Delivery', ord_del_pickup: 'Pickup', ord_del_ship: 'Shipping Co.',
     ord_loading: 'Loading orders…',
     ord_s_preparing:       'Preparing',
     ord_s_ready:           'Ready',
@@ -622,15 +622,18 @@ function SalesTab({ profile, t }) {
 // ─── Delivery helpers ──────────────────────────────────────────────────────────
 
 // Parses delivery_type from DB — supports legacy single string and new JSON array.
+// Migrates legacy names: 'fast'→'seller_delivery', 'nationwide'→'third_party'
 function parseDeliveryTypes(p) {
   const dt = p?.delivery_type;
-  if (!dt) return p?.is_perishable ? ['fast'] : ['nationwide'];
+  const migrate = (d) =>
+    d === 'fast' ? 'seller_delivery' : d === 'nationwide' ? 'third_party' : d === 'local' ? 'seller_delivery' : d;
+
+  if (!dt) return p?.is_perishable ? ['seller_delivery'] : ['third_party'];
   try {
     const arr = JSON.parse(dt);
-    if (Array.isArray(arr) && arr.length > 0) return arr;
+    if (Array.isArray(arr) && arr.length > 0) return arr.map(migrate);
   } catch { /* legacy string fallback below */ }
-  if (dt === 'local') return ['fast'];
-  return [dt]; // single string — wrap in array
+  return [migrate(dt)];
 }
 
 // Serialises the delivery types array → stored as JSON string in delivery_type column.
@@ -674,12 +677,24 @@ function DeliveryCheckCard({ checked, onToggle, disabled, Icon, iconColor, label
 function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }) {
   const isRtl = t.dir === 'rtl';
 
+  // Existing images from DB (URLs as strings)
+  const existingImages = (() => {
+    if (Array.isArray(product.images) && product.images.length) return product.images;
+    try {
+      const parsed = JSON.parse(product.images ?? '[]');
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch { /* ignore */ }
+    return product.image_url ? [product.image_url] : [];
+  })();
+
   const [price,          setPrice]          = useState(String(product.price ?? ''));
   const [stock,          setStock]          = useState(String(product.stock ?? ''));
   const [deliveryTypes,  setDeliveryTypes]  = useState(parseDeliveryTypes(product));
   const [saving,         setSaving]         = useState(false);
   const [deleting,       setDeleting]       = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
+  // Images: mix of URL strings (existing) and File objects (new uploads)
+  const [images,         setImages]         = useState(existingImages);
 
   const busy = saving || deleting;
 
@@ -710,16 +725,43 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     }
 
     setSaving(true);
+    // Upload any new File objects; keep existing URL strings as-is
+    const finalUrls = [];
+    for (const img of images) {
+      if (typeof img === 'string') {
+        finalUrls.push(img);
+      } else {
+        const ext      = img.name.split('.').pop().toLowerCase();
+        const filePath = `${product.producer_id}/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, img, { upsert: false, contentType: img.type });
+        if (uploadErr) {
+          showToast(`${t.ap_errUpload}${uploadErr.message}`, 'error');
+          setSaving(false);
+          return;
+        }
+        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+        finalUrls.push(urlData.publicUrl);
+      }
+    }
+
+    const updatePayload = {
+      price:         priceVal,
+      stock:         stockVal,
+      is_perishable: deliveryTypes.some((d) => d !== 'third_party'),
+      delivery_type: serializeDeliveryTypes(deliveryTypes),
+    };
+    if (finalUrls.length > 0) {
+      updatePayload.image_url = finalUrls[0];
+      updatePayload.images    = finalUrls;
+    }
+
     const { data, error } = await supabase
       .from('products')
-      .update({
-        price:         priceVal,
-        stock:         stockVal,
-        is_perishable: deliveryTypes.some((d) => d !== 'nationwide'),
-        delivery_type: serializeDeliveryTypes(deliveryTypes),
-      })
+      .update(updatePayload)
       .eq('id', product.id)
-      .select('id, price, stock, is_perishable, delivery_type')
+      .select('id, price, stock, is_perishable, delivery_type, image_url, images')
       .single();
 
     setSaving(false);
@@ -749,9 +791,9 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
   const inputCls = 'w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all';
 
   const DELIVERY_OPTIONS = [
-    { value: 'fast',       Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
-    { value: 'pickup',     Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
-    { value: 'nationwide', Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
+    { value: 'seller_delivery', Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
+    { value: 'pickup',          Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
+    { value: 'third_party',     Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
   ];
 
   return (
@@ -796,6 +838,21 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
                 onChange={(e) => setStock(e.target.value)}
                 className={inputCls} disabled={busy} />
             </div>
+          </div>
+
+          {/* Images */}
+          <div>
+            <label className="text-xs font-bold text-gray-600 block mb-2">
+              {isRtl ? 'صور المنتج' : 'Product Images'}
+            </label>
+            <MultiImageDropZone
+              files={images}
+              onAdd={(f) => setImages((prev) => prev.length < MAX_IMAGES ? [...prev, f] : prev)}
+              onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+              disabled={busy}
+              t={t}
+              isRtl={isRtl}
+            />
           </div>
 
           {/* Delivery — multi-select checkboxes */}
@@ -980,16 +1037,17 @@ function MyProductsTab({ profile, t, showToast }) {
                       <Home size={9} />{t.dir === 'rtl' ? 'استلام شخصي' : 'Pickup'}
                     </span>
                   );
-                  if (dt === 'fast') return (
-                    <span key="fast" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                      <Zap size={9} />{t.dir === 'rtl' ? 'توصيل سريع' : 'Fast'}
+                  if (dt === 'seller_delivery') return (
+                    <span key="seller_delivery" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      <Zap size={9} />{t.dir === 'rtl' ? 'توصيل من البائع' : 'Seller Delivery'}
                     </span>
                   );
-                  return (
-                    <span key="nationwide" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                      <Truck size={9} />{t.dir === 'rtl' ? 'شحن وطني' : 'Nationwide'}
+                  if (dt === 'third_party') return (
+                    <span key="third_party" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                      <Truck size={9} />{t.dir === 'rtl' ? 'شركة شحن' : 'Shipping Co.'}
                     </span>
                   );
+                  return null;
                 })}
               </div>
 
@@ -1034,66 +1092,90 @@ function MyProductsTab({ profile, t, showToast }) {
 }
 
 
-// ─── Image Upload Drop Zone ─────────────────────────────────────────────────────
+// ─── Multi-Image Upload Drop Zone (1-5 images, JPEG/JPG/PNG only) ─────────────
 
-function ImageDropZone({ file, onFile, onClear, disabled, t }) {
-  const inputRef  = useRef(null);
+const MAX_IMAGES = 5;
+const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+
+function MultiImageDropZone({ files, onAdd, onRemove, disabled, t, isRtl }) {
+  const inputRef = useRef(null);
   const [drag, setDrag] = useState(false);
+  const canAdd = files.length < MAX_IMAGES;
 
-  const accept = (f) => {
-    if (!f) return;
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(f.type)) return;
-    if (f.size > 5 * 1024 * 1024) return;
-    onFile(f);
-  };
+  const acceptFiles = useCallback((rawFiles) => {
+    const valid = Array.from(rawFiles).filter((f) =>
+      ALLOWED_TYPES.includes(f.type) && f.size <= 5 * 1024 * 1024
+    );
+    const slots = MAX_IMAGES - files.length;
+    valid.slice(0, slots).forEach((f) => onAdd(f));
+  }, [files.length, onAdd]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();
     setDrag(false);
-    accept(e.dataTransfer.files[0]);
-  }, []);
-
-  const preview = file ? URL.createObjectURL(file) : null;
+    acceptFiles(e.dataTransfer.files);
+  }, [acceptFiles]);
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-      onDragLeave={() => setDrag(false)}
-      onDrop={onDrop}
-      onClick={() => !file && inputRef.current?.click()}
-      className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed
-        transition-all duration-200 overflow-hidden select-none
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        ${drag ? 'border-blue-400 bg-blue-50 scale-[1.01]' : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/40'}
-        ${file ? 'h-52' : 'h-44'}`}
-    >
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
-        className="sr-only" disabled={disabled} onChange={(e) => accept(e.target.files[0])} />
-      {file ? (
-        <>
-          <img src={preview} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center gap-2 opacity-0 hover:opacity-100 transition-opacity duration-200">
-            <button type="button" onClick={(e) => { e.stopPropagation(); onClear(); }}
-              className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors">
-              <X size={12} /> {t.img_delete}
-            </button>
-            <button type="button" onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
-              className="flex items-center gap-1.5 bg-white/90 hover:bg-white text-gray-800 text-xs font-bold px-4 py-2 rounded-xl transition-colors">
-              <Upload size={12} /> {t.img_replace}
-            </button>
-          </div>
-          <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
-            <FileImage size={9} /> {(file.size / 1024).toFixed(0)} KB
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center gap-3 px-6 text-center pointer-events-none">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${drag ? 'bg-blue-100' : 'bg-gray-100'}`}>
-            <ImagePlus size={22} className={drag ? 'text-blue-500' : 'text-gray-400'} />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-600">{drag ? t.img_drop : t.img_click}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{t.img_formats}</p>
+    <div className="flex flex-col gap-3">
+      {/* Thumbnails row */}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((f, i) => {
+            const url = f instanceof File ? URL.createObjectURL(f) : f;
+            return (
+              <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 group">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onRemove(i)}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X size={10} />
+                </button>
+                {i === 0 && (
+                  <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-blue-600 text-white px-1 rounded font-bold">
+                    {isRtl ? 'رئيسية' : 'Main'}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Drop zone — only shown when more images can be added */}
+      {canAdd && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={onDrop}
+          onClick={() => !disabled && inputRef.current?.click()}
+          className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed h-32 transition-all duration-200 select-none
+            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            ${drag ? 'border-blue-400 bg-blue-50 scale-[1.01]' : 'border-gray-200 bg-gray-50 hover:border-blue-300 hover:bg-blue-50/40'}`}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/jpg,image/png"
+            className="sr-only"
+            disabled={disabled}
+            onChange={(e) => acceptFiles(e.target.files)}
+          />
+          <div className="flex flex-col items-center gap-2 px-6 text-center pointer-events-none">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${drag ? 'bg-blue-100' : 'bg-gray-100'}`}>
+              <ImagePlus size={20} className={drag ? 'text-blue-500' : 'text-gray-400'} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-600">{drag ? t.img_drop : t.img_click}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{isRtl ? 'JPEG · PNG — بحد أقصى 5 MB' : 'JPEG · PNG — max 5 MB'}</p>
+              <p className="text-[11px] text-blue-500 font-medium mt-0.5">
+                {isRtl ? `${files.length} / ${MAX_IMAGES} صور` : `${files.length} / ${MAX_IMAGES} images`}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -1106,8 +1188,8 @@ function ImageDropZone({ file, onFile, onClear, disabled, t }) {
 const EMPTY_PRODUCT = {
   name_ar: '', name_en: '',
   description_ar: '', description_en: '',
-  price: '', category_id: '', city_id: '',
-  delivery_types: ['nationwide'], // multi-select array — stored as JSON string in delivery_type
+  price: '', category_id: '',
+  delivery_types: ['third_party'],
   stock: '',
   weight: '',
   sizes: [], colors: [], specs: [],
@@ -1116,10 +1198,11 @@ const EMPTY_PRODUCT = {
 const PHASE_LABELS = (t) => ({ idle: null, uploading: t.ap_uploading, saving: t.ap_saving });
 
 function AddProductForm({ profile, cities, categories, showToast, t }) {
-  const [form,      setForm]      = useState(EMPTY_PRODUCT);
-  const [imageFile, setImageFile] = useState(null);
-  const [phase,     setPhase]     = useState('idle');
-  const [fieldErrs, setFieldErrs] = useState({});
+  const [form,       setForm]       = useState(EMPTY_PRODUCT);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [phase,      setPhase]      = useState('idle');
+  const [fieldErrs,  setFieldErrs]  = useState({});
+  const isRtl = t.dir === 'rtl';
 
   const submitting = phase !== 'idle';
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -1131,8 +1214,8 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
     else if (isNaN(parseFloat(form.price)) || parseFloat(form.price) < 0) errs.price = t.ap_errPriceBad;
     if (!form.stock)                   errs.stock        = t.ap_errStock;
     if (!form.category_id)             errs.category_id  = t.ap_errCat;
-    if (!form.city_id)                 errs.city_id      = t.ap_errCity;
     if (!form.delivery_types?.length)  errs.delivery     = t.ap_errDelivery;
+    if (imageFiles.length === 0)       errs.images       = isRtl ? 'يرجى إضافة صورة واحدة على الأقل' : 'At least 1 image is required';
     return errs;
   };
 
@@ -1142,17 +1225,21 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
     if (Object.keys(errs).length) { setFieldErrs(errs); return; }
     setFieldErrs({});
     let image_url = null;
+    let images_urls = [];
     try {
-      if (imageFile) {
+      if (imageFiles.length > 0) {
         setPhase('uploading');
-        const ext      = imageFile.name.split('.').pop();
-        const filePath = `${profile.user_id}/${crypto.randomUUID()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from('product-images')
-          .upload(filePath, imageFile, { upsert: false, contentType: imageFile.type });
-        if (uploadError) { showToast(`${t.ap_errUpload}${uploadError.message}`, 'error'); return; }
-        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
-        image_url = urlData.publicUrl;
+        for (const file of imageFiles) {
+          const ext      = file.name.split('.').pop().toLowerCase();
+          const filePath = `${profile.user_id}/${crypto.randomUUID()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from('product-images')
+            .upload(filePath, file, { upsert: false, contentType: file.type });
+          if (uploadError) { showToast(`${t.ap_errUpload}${uploadError.message}`, 'error'); return; }
+          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
+          images_urls.push(urlData.publicUrl);
+        }
+        image_url = images_urls[0]; // first image is the primary
       }
       setPhase('saving');
       // ── ARCHITECTURE: producer_id = producer_profiles.id (the profile PK)
@@ -1162,18 +1249,19 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       //     SELECT id FROM producer_profiles WHERE user_id = auth.uid()
       //   ))
       // So we send profile.id (the PK of the profile owned by the current auth user).
-      const delivTypes = form.delivery_types ?? ['nationwide'];
-      const isLocal    = delivTypes.some((d) => d !== 'nationwide');
+      const delivTypes = form.delivery_types ?? ['third_party'];
+      const isLocal    = delivTypes.some((d) => d !== 'third_party');
       const payload = {
         producer_id:   profile.id,
         category_id:   parseInt(form.category_id),
-        city_id:       parseInt(form.city_id),
+        city_id:       profile.city_id,
         name_ar:       form.name_ar.trim(),
         price:         parseFloat(form.price),
         is_perishable: isLocal,
-        delivery_type: serializeDeliveryTypes(delivTypes), // JSON string (or single string for 1 type)
+        delivery_type: serializeDeliveryTypes(delivTypes),
         stock:         parseInt(form.stock),
         image_url,
+        images:        images_urls.length > 0 ? images_urls : null,
         is_active:     true,
       };
       // Optional text columns — only include when the column exists in your schema
@@ -1208,7 +1296,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         console.log('[AddProduct] Insert success — id:', insertData?.id);
         showToast(t.ap_success, 'success');
         setForm(EMPTY_PRODUCT);
-        setImageFile(null);
+        setImageFiles([]);
       }
     } catch (err) {
       showToast(`${t.ap_errSave}${err.message}`, 'error');
@@ -1243,12 +1331,19 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
       <form onSubmit={handleSubmit} noValidate className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col gap-7">
 
-        {/* Image */}
+        {/* Images */}
         <section>
           <SectionTitle icon={ImagePlus} label={t.ap_image} />
           <div className="mt-4">
-            <ImageDropZone file={imageFile} onFile={setImageFile} onClear={() => setImageFile(null)} disabled={submitting} t={t} />
-            <p className="text-xs text-gray-400 mt-2 text-center">{t.img_optional}</p>
+            <MultiImageDropZone
+              files={imageFiles}
+              onAdd={(f) => setImageFiles((prev) => [...prev, f])}
+              onRemove={(i) => setImageFiles((prev) => prev.filter((_, j) => j !== i))}
+              disabled={submitting}
+              t={t}
+              isRtl={isRtl}
+            />
+            {fieldErrs.images && <p className="text-xs text-red-500 font-medium mt-1">{fieldErrs.images}</p>}
           </div>
         </section>
 
@@ -1320,7 +1415,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         {/* Classification */}
         <section>
           <SectionTitle icon={Layers} label={t.ap_classification} />
-          <div className="grid grid-cols-2 gap-4 mt-4">
+          <div className="flex flex-col gap-4 mt-4">
             <Field label={t.ap_category} required>
               <select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}
                 className={inputErr('category_id')} disabled={submitting}>
@@ -1329,14 +1424,17 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
               </select>
               {fieldErrs.category_id && <p className="text-xs text-red-500 font-medium">{fieldErrs.category_id}</p>}
             </Field>
-            <Field label={t.ap_city} required>
-              <select value={form.city_id} onChange={(e) => set('city_id', e.target.value)}
-                className={inputErr('city_id')} disabled={submitting}>
-                <option value="">{t.ap_selectCity}</option>
-                {cities.map((c) => <option key={c.id} value={c.id}>{pickName(c, t.dir === 'rtl')}</option>)}
-              </select>
-              {fieldErrs.city_id && <p className="text-xs text-red-500 font-medium">{fieldErrs.city_id}</p>}
-            </Field>
+            {/* City is taken automatically from seller's profile — no manual selection needed */}
+            {profile.city_id && (() => {
+              const profileCity = cities.find((c) => c.id === profile.city_id);
+              return profileCity ? (
+                <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <MapPin size={12} className="text-blue-400" />
+                  {t.dir === 'rtl' ? 'مدينة المنتج:' : 'Product city:'}{' '}
+                  <span className="font-semibold text-gray-700">{pickName(profileCity, t.dir === 'rtl')}</span>
+                </p>
+              ) : null;
+            })()}
           </div>
         </section>
 
@@ -1355,9 +1453,9 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
           <div className="flex flex-col gap-3">
             {[
-              { value: 'fast',       Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
-              { value: 'pickup',     Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
-              { value: 'nationwide', Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
+              { value: 'seller_delivery', Icon: Zap,   iconColor: 'text-amber-500',   label: t.ap_del_fast,   sub: t.ap_del_fast_sub,   activeBorder: 'border-amber-400',   activeBg: 'bg-amber-50'   },
+              { value: 'pickup',          Icon: Home,  iconColor: 'text-emerald-600', label: t.ap_del_pickup, sub: t.ap_del_pickup_sub, activeBorder: 'border-emerald-400', activeBg: 'bg-emerald-50' },
+              { value: 'third_party',     Icon: Truck, iconColor: 'text-blue-500',    label: t.ap_del_ship,   sub: t.ap_del_ship_sub,   activeBorder: 'border-blue-400',    activeBg: 'bg-blue-50'    },
             ].map((opt) => {
               const checked = (form.delivery_types ?? []).includes(opt.value);
               const toggle = () => {
@@ -1695,7 +1793,7 @@ const STATUS_META = {
   cancelled:        { ar: 'ملغي',           en: 'Cancelled',        dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 border-red-200',           card: 'border-red-200'     },
 };
 
-const DELIVERY_ICONS = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
+const DELIVERY_ICONS = { seller_delivery: '🛵', pickup: '🏠', third_party: '📦', fast: '🛵', nationwide: '📦' };
 
 function StatusBadge({ status, lang }) {
   const m = STATUS_META[status] ?? STATUS_META.pending;
@@ -1948,14 +2046,14 @@ function ProducerOrdersTab({ t, showToast, profile }) {
               )
             : '—';
 
-          const delivOpt  = item.delivery_option ?? 'nationwide';
+          const delivOpt  = item.delivery_option ?? 'third_party';
           const delivIcon = DELIVERY_ICONS[delivOpt] ?? '📦';
           const delivLabel = {
-            fast:             isRtl ? 'توصيل سريع' : 'Fast Delivery',
-            pickup:           isRtl ? 'استلام شخصي' : 'Self Pickup',
             seller_delivery:  isRtl ? 'توصيل من البائع' : 'Seller Delivery',
+            fast:             isRtl ? 'توصيل من البائع' : 'Seller Delivery',
+            pickup:           isRtl ? 'استلام شخصي' : 'Self Pickup',
             third_party:      isRtl ? 'شركة شحن' : 'Shipping Co.',
-            nationwide:       isRtl ? 'شحن وطني' : 'Nationwide',
+            nationwide:       isRtl ? 'شركة شحن' : 'Shipping Co.',
           }[delivOpt] ?? (isRtl ? 'توصيل' : 'Delivery');
 
           const payLabel = {

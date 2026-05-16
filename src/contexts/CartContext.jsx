@@ -245,6 +245,15 @@ export function CartProvider({ children }) {
     }
   }, [user, setGuestItems, removeItem, upsertDBItem]);
 
+  const updateItemMeta = useCallback((productId, meta) => {
+    const pid = String(productId);
+    if (!user) {
+      setGuestItems((prev) => prev.map((i) => i.id === pid ? { ...i, ...meta } : i));
+    } else {
+      setItems((prev) => prev.map((i) => i.id === pid ? { ...i, ...meta } : i));
+    }
+  }, [user, setGuestItems]);
+
   const clearCart = useCallback(async () => {
     setItems([]);
     if (!user) {
@@ -269,6 +278,7 @@ export function CartProvider({ children }) {
         addItem,
         removeItem,
         updateQty,
+        updateItemMeta,
         clearCart,
         totalCount,
         subtotal,

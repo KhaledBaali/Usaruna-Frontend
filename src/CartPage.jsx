@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart, Trash2, Plus, Minus, ArrowLeft, ArrowRight,
-  Shield, Globe, MapPin, ChevronLeft, ChevronRight,
+  Shield, Globe, MapPin, ChevronLeft, ChevronRight, AlertCircle,
 } from 'lucide-react';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import LocationPicker from './LocationPicker';
 import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
+
+const DELIVERY_PRICES = { pickup: 0, seller_delivery: 15, third_party: 25 };
 
 // ─── NAVBAR ───────────────────────────────────────────────────────────────────
 
@@ -81,105 +84,124 @@ function MiniMap({ location, title }) {
 
 // ─── CART ITEM ────────────────────────────────────────────────────────────────
 
-function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty }) {
+function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty, onUpdateMeta }) {
   const name   = lang === 'ar' ? item.name   : (item.nameEn   || item.name);
   const family = lang === 'ar' ? item.family : (item.familyEn || item.family);
   const city   = lang === 'ar' ? item.sellerCity : (item.sellerCityEn || item.sellerCity);
 
-  const delivMeta = item.deliveryOption ? DELIVERY_META[item.deliveryOption] : null;
-  const delivLabel = delivMeta
-    ? (lang === 'ar' ? delivMeta.arLabel : delivMeta.enLabel)
-    : null;
+  const delivMeta  = item.deliveryOption ? DELIVERY_META[item.deliveryOption] : null;
+  const delivLabel = delivMeta ? (lang === 'ar' ? delivMeta.arLabel : delivMeta.enLabel) : null;
+  const needsLocation = ['seller_delivery', 'third_party'].includes(item.deliveryOption);
+  const hasLocation   = !!item.deliveryLocation?.lat;
+  const maxQty = item.stock ?? 99;
 
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 sm:p-5 flex gap-4 items-start">
-      {/* Emoji thumbnail */}
-      <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0 text-3xl sm:text-4xl select-none`}>
-        {item.emoji}
-      </div>
+      {/* Thumbnail */}
+      <Link to={`/product/${item.id}`} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0 overflow-hidden`}>
+        {item.image_url
+          ? <img src={item.image_url} alt={name} className="w-full h-full object-cover" />
+          : <span className="text-3xl sm:text-4xl select-none">{item.emoji}</span>
+        }
+      </Link>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
-        <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-snug line-clamp-2 mb-1">
+        <Link to={`/product/${item.id}`} className="font-bold text-gray-800 text-sm sm:text-base leading-snug line-clamp-2 mb-1 hover:text-blue-700 transition-colors block">
           {name}
-        </h3>
+        </Link>
         <p className="text-xs text-blue-600 font-medium flex items-center gap-1 mb-2">
-          <MapPin size={11} className="shrink-0" />
-          {family} · {city}
+          <MapPin size={11} className="shrink-0" />{family} · {city}
         </p>
 
-        {/* Delivery badge */}
+        {/* No delivery chosen yet: show selector */}
+        {!item.deliveryOption && item.deliveryTypes?.length > 0 && (
+          <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+            <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5 mb-2">
+              <AlertCircle size={12} />{lang === 'ar' ? 'اختر طريقة التوصيل' : 'Choose delivery method'}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {item.deliveryTypes.map((type) => {
+                const meta = DELIVERY_META[type];
+                if (!meta) return null;
+                const price = DELIVERY_PRICES[type] ?? 0;
+                return (
+                  <button key={type}
+                    onClick={() => onUpdateMeta(item.id, { deliveryOption: type, deliveryPrice: price })}
+                    className="flex items-center gap-2 text-xs font-semibold text-gray-700 bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl px-3 py-2 transition-colors text-start">
+                    <span>{meta.emoji}</span>
+                    <span className="flex-1">{lang === 'ar' ? meta.arLabel : meta.enLabel}</span>
+                    <span className="text-gray-500">{price === 0 ? (lang === 'ar' ? 'مجاناً' : 'Free') : `${price} ${t('cart_sar')}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Delivery badge (when chosen) */}
         {delivMeta && (
           <div className="mb-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-full px-2.5 py-1">
-              <span>{delivMeta.emoji}</span>
-              {delivLabel}
-              {item.deliveryPrice > 0 && (
-                <span className="text-gray-400 font-normal">· {item.deliveryPrice} {t('cart_sar')}</span>
-              )}
-              {item.deliveryPrice === 0 && (
-                <span className="text-emerald-600 font-bold">· {lang === 'ar' ? 'مجاناً' : 'Free'}</span>
-              )}
+              <span>{delivMeta.emoji}</span>{delivLabel}
+              {item.deliveryPrice > 0
+                ? <span className="text-gray-400 font-normal">· {item.deliveryPrice} {t('cart_sar')}</span>
+                : <span className="text-emerald-600 font-bold">· {lang === 'ar' ? 'مجاناً' : 'Free'}</span>
+              }
             </span>
-
             {/* Location address */}
             {item.deliveryLocation?.address && (
               <div className="mt-1.5 flex items-start gap-1.5">
                 <MapPin size={11} className="text-blue-400 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">
-                  {item.deliveryLocation.address}
-                </p>
+                <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">{item.deliveryLocation.address}</p>
               </div>
             )}
-
-            {/* Mini OSM map */}
             {item.deliveryLocation?.lat && item.deliveryLocation?.lng && (
               <MiniMap location={item.deliveryLocation} title={`location-${item.id}`} />
+            )}
+            {/* Location picker for delivery needing it */}
+            {needsLocation && !hasLocation && (
+              <div className="mt-2">
+                <p className="text-[11px] font-bold text-blue-600 mb-1.5 flex items-center gap-1">
+                  <MapPin size={10} />{lang === 'ar' ? 'حدد موقع التوصيل على الخريطة' : 'Set delivery location on map'}
+                </p>
+                <LocationPicker
+                  key={`cart-loc-${item.id}`}
+                  mode="customer"
+                  lang={lang}
+                  onConfirm={(loc) => onUpdateMeta(item.id, { deliveryLocation: loc })}
+                />
+              </div>
             )}
           </div>
         )}
 
-        {/* Price + controls row */}
+        {/* Price + controls */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <span className="text-lg font-extrabold text-blue-900 leading-none">
-            {(item.price * item.qty).toFixed(0)}
-            <span className="text-sm font-bold ms-1">{t('cart_sar')}</span>
+            {(item.price * item.qty).toFixed(0)}<span className="text-sm font-bold ms-1">{t('cart_sar')}</span>
           </span>
-
           <div className="flex items-center gap-1">
-            {/* Remove */}
-            <button
-              onClick={() => onRemove(item.id)}
-              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-              aria-label={t('cart_remove')}
-            >
+            <button onClick={() => onRemove(item.id)}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
               <Trash2 size={15} />
             </button>
-
-            {/* Qty controls */}
             <div className="flex items-center gap-1 bg-gray-100 rounded-2xl p-1">
-              <button
-                onClick={() => onUpdateQty(item.id, item.qty - 1)}
-                className="w-7 h-7 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-blue-50 transition-colors text-gray-600 hover:text-blue-700"
-              >
+              <button onClick={() => onUpdateQty(item.id, item.qty - 1)}
+                className="w-7 h-7 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-blue-50 transition-colors text-gray-600 hover:text-blue-700">
                 <Minus size={13} />
               </button>
               <span className="w-7 text-center text-sm font-bold text-gray-800">{item.qty}</span>
-              <button
-                onClick={() => onUpdateQty(item.id, item.qty + 1)}
-                className="w-7 h-7 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-blue-50 transition-colors text-gray-600 hover:text-blue-700"
-              >
+              <button onClick={() => onUpdateQty(item.id, Math.min(item.qty + 1, maxQty))}
+                disabled={item.qty >= maxQty}
+                className="w-7 h-7 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-blue-50 transition-colors text-gray-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
                 <Plus size={13} />
               </button>
             </div>
           </div>
         </div>
-
-        {/* Per-unit price */}
-        {item.qty > 1 && (
-          <p className="text-[11px] text-gray-400 mt-1">
-            {item.price} {t('cart_sar')} × {item.qty}
-          </p>
+        {item.qty > 1 && <p className="text-[11px] text-gray-400 mt-1">{item.price} {t('cart_sar')} × {item.qty}</p>}
+        {item.qty >= maxQty && maxQty < 99 && (
+          <p className="text-[11px] text-amber-600 mt-1 font-semibold">{lang === 'ar' ? `الحد الأقصى المتاح: ${maxQty}` : `Max available: ${maxQty}`}</p>
         )}
       </div>
     </div>
@@ -188,7 +210,7 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty }) {
 
 // ─── ORDER SUMMARY ────────────────────────────────────────────────────────────
 
-function OrderSummary({ t, lang, subtotal, deliveryTotal, isRtl }) {
+function OrderSummary({ t, lang, subtotal, deliveryTotal, isRtl, canCheckout }) {
   const hasItems = subtotal > 0;
   const grandTotal = subtotal + deliveryTotal;
 
@@ -227,7 +249,7 @@ function OrderSummary({ t, lang, subtotal, deliveryTotal, isRtl }) {
       </div>
 
       {/* Checkout button */}
-      {hasItems ? (
+      {hasItems && canCheckout ? (
         <Link
           to="/checkout"
           className="w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 mb-3 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white shadow-sm"
@@ -241,7 +263,11 @@ function OrderSummary({ t, lang, subtotal, deliveryTotal, isRtl }) {
           className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 mb-3 bg-gray-100 text-gray-400 cursor-not-allowed"
         >
           {isRtl ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
-          {t('cart_checkout')}
+          {!hasItems
+            ? t('cart_checkout')
+            : lang === 'ar'
+              ? 'أكمل خيارات التوصيل أولاً'
+              : 'Complete delivery options first'}
         </button>
       )}
 
@@ -292,9 +318,16 @@ function EmptyCart({ t, isRtl }) {
 
 export default function CartPage() {
   const { lang, dir, toggle, t } = useLang();
-  const { items, removeItem, updateQty, totalCount, subtotal } = useCart();
+  const { items, removeItem, updateQty, updateItemMeta, totalCount, subtotal } = useCart();
   const isRtl = dir === 'rtl';
   const deliveryTotal = items.reduce((s, i) => s + (i.deliveryPrice ?? 0), 0);
+
+  const allDeliverySet = items.every((item) => !!item.deliveryOption);
+  const allLocationSet = items.every((item) => {
+    const needs = ['seller_delivery', 'third_party'].includes(item.deliveryOption);
+    return !needs || !!item.deliveryLocation?.lat;
+  });
+  const canCheckout = items.length > 0 && allDeliverySet && allLocationSet;
 
   return (
     <div dir={dir} className={`min-h-screen bg-gray-50 font-sans ${isRtl ? 'text-right' : 'text-left'}`}>
@@ -318,6 +351,7 @@ export default function CartPage() {
                   isRtl={isRtl}
                   onRemove={removeItem}
                   onUpdateQty={updateQty}
+                  onUpdateMeta={updateItemMeta}
                 />
               ))}
 
@@ -333,7 +367,7 @@ export default function CartPage() {
 
             {/* Summary — desktop sidebar */}
             <div className="hidden lg:block">
-              <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} />
+              <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} canCheckout={canCheckout} />
             </div>
           </div>
         )}
@@ -341,7 +375,7 @@ export default function CartPage() {
         {/* Mobile order summary (shown below items) */}
         {items.length > 0 && (
           <div className="lg:hidden mt-6">
-            <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} />
+            <OrderSummary t={t} lang={lang} subtotal={subtotal} deliveryTotal={deliveryTotal} isRtl={isRtl} canCheckout={canCheckout} />
           </div>
         )}
       </main>

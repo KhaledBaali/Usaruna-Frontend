@@ -1,18 +1,18 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ShoppingCart, Star, Heart, MapPin, Clock, Package,
   ChevronRight, ChevronLeft, Minus, Plus, Share2,
   Shield, Truck, Award, Phone, ThumbsUp, CheckCircle,
   Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
-  Wand2, Copy, Check, Loader2, Zap,
+  Wand2, Copy, Check, Loader2, Zap, MessageCircle, Trash2, Store,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
-// Products removed for strict live DB tracking
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
+import { useAuth } from './contexts/AuthContext';
 import { useWishlist } from './contexts/WishlistContext';
-import { fetchProductById, fetchReviews, submitReview } from './lib/api';
+import { fetchProductById, fetchReviews, submitReview, deleteReview, replyToReview, deleteReviewReply } from './lib/api';
 import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
 import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
@@ -31,17 +31,16 @@ function StarRating({ rating, size = 14 }) {
   );
 }
 
-function DeliveryTag({ isPerishable }) {
-  const { t } = useLang();
-  return isPerishable ? (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 w-fit">
-      <Zap size={13} className="shrink-0" />{t('tag_fastDelivery')}
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 w-fit">
-      📦 {t('tag_nationwide')}
-    </span>
-  );
+function DeliveryTag({ deliveryTypes }) {
+  const { lang } = useLang();
+  const tags = [];
+  if (deliveryTypes?.includes('seller_delivery'))
+    tags.push(<span key="sd" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">🛵 {lang === 'ar' ? 'توصيل البائع' : 'Seller Delivery'}</span>);
+  if (deliveryTypes?.includes('third_party'))
+    tags.push(<span key="tp" className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5">📦 {lang === 'ar' ? 'شحن وطني' : 'Nationwide'}</span>);
+  if (deliveryTypes?.includes('pickup'))
+    tags.push(<span key="pu" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5">🏪 {lang === 'ar' ? 'استلام شخصي' : 'Pickup'}</span>);
+  return <div className="flex flex-wrap gap-1.5">{tags}</div>;
 }
 
 function ToastContainer({ toasts }) {
@@ -72,6 +71,7 @@ export default function ProductDetailsPage() {
   const navigate         = useNavigate();
   const { lang, dir, toggle, t } = useLang();
   const { addItem, totalCount } = useCart();
+  const { user } = useAuth();
   const { toggle: toggleWishlist, isLiked } = useWishlist();
 
   const [product, setProduct] = useState(null);
@@ -82,10 +82,29 @@ export default function ProductDetailsPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetchProductById(Number(id)).then((data) => { if (data) setProduct(data); }),
-      fetchReviews(Number(id)).then((data)    => { if (data?.length) setReviews(data); })
+      fetchProductById(Number(id)).then((data) => {
+        if (data) {
+          setProduct(data);
+          // Set default delivery option from product's available types
+          if (data.deliveryTypes?.length) setDeliveryOption(data.deliveryTypes[0]);
+        }
+      }),
+      fetchReviews(Number(id)).then((data) => { if (data?.length) setReviews(data); })
     ]).finally(() => setLoading(false));
   }, [id]);
+
+  // Auto-summarize when reviews reach 10+
+  useEffect(() => {
+    if (reviews.length >= 10 && !aiSummary && !aiSummaryLoading) {
+      setAiSummaryLoading(true);
+      const texts = reviews.map((r) => lang === 'ar' ? r.comment : (r.comment_en || r.comment)).filter(Boolean);
+      summarizeReviews(texts, lang)
+        .then(setAiSummary)
+        .catch(() => {})
+        .finally(() => setAiSummaryLoading(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviews.length]);
 
   // AI: summarize reviews on demand (also called after reset)
   const handleSummarize = () => {
@@ -108,9 +127,7 @@ export default function ProductDetailsPage() {
   const [selectedImage,  setSelectedImage]  = useState(0);
   const [quantity,       setQuantity]       = useState(1);
   const [added,          setAdded]          = useState(false);
-  const [deliveryOption, setDeliveryOption] = useState(
-    product?.isPerishable ? 'seller_delivery' : 'third_party'
-  );
+  const [deliveryOption, setDeliveryOption] = useState(null);
   const [selectedSize,   setSelectedSize]   = useState(defaultSize);
   const [selectedColor,  setSelectedColor]  = useState(defaultColor);
   const [starFilter,     setStarFilter]     = useState(0);
@@ -132,11 +149,24 @@ export default function ProductDetailsPage() {
   const [translatedComments,  setTranslatedComments]  = useState({});
   const [translatingComments, setTranslatingComments] = useState({});
 
+  // Seller reply state
+  const [replyDrafts,     setReplyDrafts]     = useState({});
+  const [replyEditorOpen, setReplyEditorOpen] = useState(new Set());
+  const [replySubmitting, setReplySubmitting] = useState({});
+
+  // Enhanced description (AR + EN separately)
+  const [enhancedDescAr,  setEnhancedDescAr]  = useState(null);
+  const [enhancedDescEn,  setEnhancedDescEn]  = useState(null);
+  const [enhancingAr,     setEnhancingAr]     = useState(false);
+  const [enhancingEn,     setEnhancingEn]     = useState(false);
+
   const DELIVERY_OPTIONS = [
     { id: 'pickup',          emoji: '🏪', label: t('delivery_pickup_label'), desc: t('delivery_pickup_desc'), price: 0,  eta: t('delivery_pickup_eta')  },
     { id: 'seller_delivery', emoji: '🛵', label: t('delivery_seller_label'), desc: t('delivery_seller_desc'), price: 15, eta: t('delivery_seller_eta')  },
     { id: 'third_party',     emoji: '📦', label: t('delivery_3p_label'),     desc: t('delivery_3p_desc'),     price: 25, eta: t('delivery_3p_eta')      },
   ];
+
+  const isSeller = !!(user && product?.producerUserId && user.id === product.producerUserId);
 
   const SORT_OPTIONS = [
     { id: 'recent',  label: t('sort_recent')  },
@@ -147,11 +177,9 @@ export default function ProductDetailsPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const availableDelivery = useMemo(
-    () => DELIVERY_OPTIONS.filter((o) =>
-      product?.isPerishable ? o.id !== 'third_party' : o.id !== 'seller_delivery'
-    ),
+    () => DELIVERY_OPTIONS.filter((o) => product?.deliveryTypes?.includes(o.id) ?? false),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [product?.isPerishable, lang]
+    [product?.deliveryTypes, lang]
   );
 
   const filteredReviews = useMemo(() => {
@@ -204,15 +232,24 @@ export default function ProductDetailsPage() {
     setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== toastId)), 3200);
   };
 
+  const needsLocation = deliveryOption === 'seller_delivery' || deliveryOption === 'third_party';
+  const locationConfirmed = !needsLocation || !!customerLocation?.lat;
+  const canAddToCart = stockLevel !== 'out' && deliveryOption && locationConfirmed;
+
   const handleAddToCart = () => {
-    if (stockLevel === 'out') return;
-    addItem(product, quantity, {
+    if (!canAddToCart) {
+      if (!deliveryOption) { showToast(lang === 'ar' ? 'اختر طريقة التوصيل أولاً' : 'Please select a delivery option', '⚠️'); return; }
+      if (!locationConfirmed) { showToast(lang === 'ar' ? 'يرجى تأكيد موقع التوصيل على الخريطة' : 'Please confirm your delivery location on the map', '📍'); return; }
+      return;
+    }
+    const cappedQty = Math.min(quantity, product.stock ?? quantity);
+    addItem(product, cappedQty, {
       deliveryOption:   deliveryOption,
       deliveryLocation: customerLocation,
       deliveryPrice:    deliveryPrice,
     });
     setAdded(true);
-    showToast(`${t('toast_addedCart')} (${quantity})`, '🛒', 'cart');
+    showToast(`${t('toast_addedCart')} (${cappedQty})`, '🛒', 'cart');
     setTimeout(() => setAdded(false), 1800);
   };
 
@@ -244,17 +281,23 @@ export default function ProductDetailsPage() {
   };
 
   const handleSmartReply = async (review) => {
-    if (smartReplies[review.id] || smartReplyLoading[review.id]) return;
+    if (smartReplyLoading[review.id]) return;
     setSmartReplyLoading((prev) => ({ ...prev, [review.id]: true }));
     try {
       const reply = await getSmartReply({
         product_name:        px(product.name, product.nameEn),
         product_description: px(product.description, product.descriptionEn),
-        product_details:     `Weight: ${px(product.weight, product.weightEn)}, Price: ${product.price} SAR`,
+        product_details:     `Price: ${product.price} SAR`,
         customer_name:       lang === 'ar' ? review.author : (review.author_en || review.author),
         review_text:         lang === 'ar' ? review.comment : (review.comment_en || review.comment),
       });
-      setSmartReplies((prev) => ({ ...prev, [review.id]: reply }));
+      if (isSeller) {
+        // For sellers: populate the editable reply draft
+        setReplyDrafts((prev) => ({ ...prev, [review.id]: reply }));
+        setReplyEditorOpen((prev) => new Set([...prev, review.id]));
+      } else {
+        setSmartReplies((prev) => ({ ...prev, [review.id]: reply }));
+      }
     } catch { /* silently fail */ } finally {
       setSmartReplyLoading((prev) => ({ ...prev, [review.id]: false }));
     }
@@ -262,19 +305,20 @@ export default function ProductDetailsPage() {
 
   const [customerLocation, setCustomerLocation] = useState(null);
 
-  const [enhancedDesc,   setEnhancedDesc]   = useState(null);
-  const [enhancingDesc,  setEnhancingDesc]  = useState(false);
+  const handleEnhanceAr = async () => {
+    const raw = product?.description;
+    if (!raw || enhancingAr) return;
+    setEnhancingAr(true);
+    try { setEnhancedDescAr(await enhanceDescription(raw)); }
+    catch { /* silently fail */ } finally { setEnhancingAr(false); }
+  };
 
-  const handleEnhanceDesc = async () => {
-    const raw = px(product?.description, product?.descriptionEn);
-    if (!raw || enhancingDesc) return;
-    setEnhancingDesc(true);
-    try {
-      const enhanced = await enhanceDescription(raw);
-      setEnhancedDesc(enhanced);
-    } catch { /* silently fail */ } finally {
-      setEnhancingDesc(false);
-    }
+  const handleEnhanceEn = async () => {
+    const raw = product?.descriptionEn;
+    if (!raw || enhancingEn) return;
+    setEnhancingEn(true);
+    try { setEnhancedDescEn(await enhanceDescription(raw)); }
+    catch { /* silently fail */ } finally { setEnhancingEn(false); }
   };
 
   const handleTranslate = async (review) => {
@@ -305,10 +349,47 @@ export default function ProductDetailsPage() {
 
   const handleSubmitReview = async () => {
     if (!reviewText.trim()) return;
-    await submitReview({ productId: Number(id), rating: reviewRating, comment: reviewText });
-    setReviewText('');
-    setReviewRating(5);
-    showToast(t('toast_reviewSent'), '⭐', 'review');
+    const ok = await submitReview({ productId: Number(id), rating: reviewRating, comment: reviewText });
+    if (ok) {
+      // Optimistic: reload reviews
+      fetchReviews(Number(id)).then((data) => { if (data) setReviews(data); });
+      setReviewText('');
+      setReviewRating(5);
+      showToast(t('toast_reviewSent'), '⭐', 'review');
+    }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    const ok = await deleteReview(reviewId);
+    if (ok) setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+  };
+
+  const handleSubmitReply = async (reviewId) => {
+    const text = (replyDrafts[reviewId] ?? smartReplies[reviewId] ?? '').trim();
+    if (!text) return;
+    setReplySubmitting((prev) => ({ ...prev, [reviewId]: true }));
+    const ok = await replyToReview(reviewId, text);
+    if (ok) {
+      setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, seller_reply: text, seller_reply_at: new Date().toISOString() } : r));
+      setReplyEditorOpen((prev) => { const n = new Set(prev); n.delete(reviewId); return n; });
+      setReplyDrafts((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
+    }
+    setReplySubmitting((prev) => ({ ...prev, [reviewId]: false }));
+  };
+
+  const handleDeleteReply = async (reviewId) => {
+    const ok = await deleteReviewReply(reviewId);
+    if (ok) setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, seller_reply: null, seller_reply_at: null } : r));
+  };
+
+  const openReplyEditor = (reviewId, prefill = '') => {
+    setReplyDrafts((prev) => ({ ...prev, [reviewId]: prefill }));
+    setReplyEditorOpen((prev) => new Set([...prev, reviewId]));
+  };
+
+  const closeReplyEditor = (reviewId) => {
+    setReplyEditorOpen((prev) => { const n = new Set(prev); n.delete(reviewId); return n; });
+    setReplyDrafts((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
   };
 
   // ── 404 / Loading ──────────────────────────────────────────────────────────
@@ -500,7 +581,7 @@ export default function ProductDetailsPage() {
                 <span className="font-bold text-gray-800 text-sm">{product.rating}</span>
                 <span className="text-gray-400 text-sm">({product.reviews} {t('pd_reviews')})</span>
               </div>
-              <DeliveryTag isPerishable={product.isPerishable} />
+              <DeliveryTag deliveryTypes={product.deliveryTypes} />
             </div>
 
             {/* Order cutoff */}
@@ -599,39 +680,53 @@ export default function ProductDetailsPage() {
               </div>
             )}
 
-            {/* Description */}
+            {/* Description — Arabic */}
             {product.description && (
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-2.5">
-                  <h3 className="font-bold text-gray-800 text-sm">{t('pd_aboutProduct')}</h3>
+                  <h3 className="font-bold text-gray-800 text-sm">{lang === 'ar' ? 'عن المنتج' : 'About (Arabic)'}</h3>
                   <div className="flex items-center gap-2">
-                    {enhancedDesc && (
-                      <button onClick={() => setEnhancedDesc(null)} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
+                    {enhancedDescAr && (
+                      <button onClick={() => setEnhancedDescAr(null)} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
                         <RotateCcw size={10} /> {lang === 'ar' ? 'الأصلي' : 'Original'}
                       </button>
                     )}
-                    <button
-                      onClick={handleEnhanceDesc}
-                      disabled={enhancingDesc}
-                      className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50"
-                    >
-                      {enhancingDesc
-                        ? <><Loader2 size={11} className="animate-spin" />{t('ai_enhancing')}</>
-                        : <><Wand2 size={11} />{t('ai_enhance')}</>
-                      }
+                    <button onClick={handleEnhanceAr} disabled={enhancingAr}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50">
+                      {enhancingAr ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري التحسين...' : 'Enhancing...'}</>
+                        : <><Wand2 size={11} />{lang === 'ar' ? 'تحسين ع' : 'Enhance AR'}</>}
                     </button>
                   </div>
                 </div>
-                {enhancedDesc ? (
-                  <div>
-                    <p className="text-gray-600 text-sm leading-relaxed">{enhancedDesc}</p>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 mt-2">
-                      <Wand2 size={9} /> {lang === 'ar' ? 'محسّن بالذكاء الاصطناعي' : 'AI Enhanced'}
-                    </span>
+                {enhancedDescAr
+                  ? <div><p className="text-gray-600 text-sm leading-relaxed" dir="rtl">{enhancedDescAr}</p><span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 mt-2"><Wand2 size={9} /> AI</span></div>
+                  : <p className="text-gray-600 text-sm leading-relaxed" dir="rtl">{product.description}</p>
+                }
+              </div>
+            )}
+
+            {/* Description — English */}
+            {product.descriptionEn && (
+              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-2.5">
+                  <h3 className="font-bold text-gray-800 text-sm">{lang === 'ar' ? 'عن المنتج (إنجليزي)' : 'About Product'}</h3>
+                  <div className="flex items-center gap-2">
+                    {enhancedDescEn && (
+                      <button onClick={() => setEnhancedDescEn(null)} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
+                        <RotateCcw size={10} /> {lang === 'ar' ? 'الأصلي' : 'Original'}
+                      </button>
+                    )}
+                    <button onClick={handleEnhanceEn} disabled={enhancingEn}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50">
+                      {enhancingEn ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري التحسين...' : 'Enhancing...'}</>
+                        : <><Wand2 size={11} />{lang === 'ar' ? 'تحسين EN' : 'Enhance EN'}</>}
+                    </button>
                   </div>
-                ) : (
-                  <p className="text-gray-600 text-sm leading-relaxed">{px(product.description, product.descriptionEn)}</p>
-                )}
+                </div>
+                {enhancedDescEn
+                  ? <div><p className="text-gray-600 text-sm leading-relaxed" dir="ltr">{enhancedDescEn}</p><span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 mt-2"><Wand2 size={9} /> AI</span></div>
+                  : <p className="text-gray-600 text-sm leading-relaxed" dir="ltr">{product.descriptionEn}</p>
+                }
               </div>
             )}
 
@@ -774,14 +869,22 @@ export default function ProductDetailsPage() {
                     <Plus size={14} />
                   </button>
                 </div>
-                <button onClick={handleAddToCart} disabled={stockLevel === 'out'}
+                <button onClick={handleAddToCart} disabled={!canAddToCart}
                   className={`flex-1 py-3.5 rounded-2xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-sm
-                    ${stockLevel === 'out' ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    ${!canAddToCart ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : added ? 'bg-emerald-500 text-white scale-[0.98]'
                       : 'bg-blue-900 hover:bg-blue-800 text-white active:scale-[0.97]'}`}
                 >
                   <ShoppingCart size={15} />
-                  {stockLevel === 'out' ? t('btn_outOfStock') : added ? t('btn_addedToCart') : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
+                  {stockLevel === 'out'
+                    ? t('btn_outOfStock')
+                    : !deliveryOption
+                      ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
+                      : needsLocation && !locationConfirmed
+                        ? (lang === 'ar' ? 'أكد موقعك أولاً' : 'Confirm Location First')
+                        : added
+                          ? t('btn_addedToCart')
+                          : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
                 </button>
               </div>
             </div>
@@ -899,8 +1002,8 @@ export default function ProductDetailsPage() {
             </div>
           </div>
 
-          {/* AI Review Summary */}
-          {!aiSummary && !aiSummaryLoading && reviews.length > 0 && (
+          {/* AI Review Summary — button only for < 10 reviews; ≥ 10 auto-generates */}
+          {!aiSummary && !aiSummaryLoading && reviews.length > 0 && reviews.length < 10 && (
             <button
               onClick={handleSummarize}
               className="mb-5 w-full flex items-center gap-2.5 p-3.5 bg-violet-50 hover:bg-violet-100 border border-violet-100 rounded-2xl transition-colors text-sm font-semibold text-violet-600"
@@ -1024,58 +1127,119 @@ export default function ProductDetailsPage() {
                     <ThumbsUp size={12} className={helpfulVoted.has(review.id) ? 'fill-blue-600' : ''} />
                     {t('pd_helpful')} ({review.helpful + (helpfulVoted.has(review.id) ? 1 : 0)})
                   </button>
-                  {review.lang !== lang && (
+                  <button
+                    onClick={() => handleTranslate(review)}
+                    disabled={translatingComments[review.id]}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                  >
+                    {translatingComments[review.id]
+                      ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                      : translatedComments[review.id]
+                        ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                        : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                    }
+                  </button>
+                  {/* Non-seller visitors: public AI reply button */}
+                  {!isSeller && (
                     <button
-                      onClick={() => handleTranslate(review)}
-                      disabled={translatingComments[review.id]}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                      onClick={() => handleSmartReply(review)}
+                      disabled={!!smartReplies[review.id] || smartReplyLoading[review.id]}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50 disabled:cursor-default"
                     >
-                      {translatingComments[review.id]
-                        ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
-                        : translatedComments[review.id]
-                          ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
-                          : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                      {smartReplyLoading[review.id]
+                        ? <><Loader2 size={12} className="animate-spin" />{t('ai_smartReply_loading')}</>
+                        : <><Wand2 size={12} />{t('ai_smartReply')}</>
                       }
                     </button>
                   )}
-                  <button
-                    onClick={() => handleSmartReply(review)}
-                    disabled={!!smartReplies[review.id] || smartReplyLoading[review.id]}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50 disabled:cursor-default"
-                  >
-                    {smartReplyLoading[review.id]
-                      ? <><Loader2 size={12} className="animate-spin" />{t('ai_smartReply_loading')}</>
-                      : <><Wand2 size={12} />{t('ai_smartReply')}</>
-                    }
-                  </button>
+                  {/* Seller: reply button */}
+                  {isSeller && !review.seller_reply && !replyEditorOpen.has(review.id) && (
+                    <button onClick={() => openReplyEditor(review.id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+                      <MessageCircle size={12} />{lang === 'ar' ? 'رد على التقييم' : 'Reply'}
+                    </button>
+                  )}
+                  {/* Delete review: owner or seller */}
+                  {(isSeller || (user && review.user_id === user.id)) && (
+                    <button onClick={() => handleDeleteReview(review.id)}
+                      className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors font-medium">
+                      <Trash2 size={11} />{lang === 'ar' ? 'حذف' : 'Delete'}
+                    </button>
+                  )}
                 </div>
-                {smartReplies[review.id] && (
+
+                {/* Non-seller AI reply display */}
+                {!isSeller && smartReplies[review.id] && (
                   <div className="mt-3 p-3 bg-violet-50 border border-violet-100 rounded-xl text-xs text-gray-700 leading-relaxed">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[10px] font-bold text-violet-500 uppercase tracking-wide">{t('ai_smartReply')}</span>
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setSmartReplies((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
-                            setTimeout(() => handleSmartReply(review), 0);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors"
-                        >
-                          <RotateCcw size={10} />
-                          {lang === 'ar' ? 'إعادة' : 'Redo'}
+                        <button onClick={() => { setSmartReplies((prev) => { const n = { ...prev }; delete n[review.id]; return n; }); setTimeout(() => handleSmartReply(review), 0); }}
+                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors">
+                          <RotateCcw size={10} />{lang === 'ar' ? 'إعادة' : 'Redo'}
                         </button>
-                        <button
-                          onClick={() => handleCopyReply(review.id, smartReplies[review.id])}
-                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors"
-                        >
-                          {copiedReply === review.id
-                            ? <><Check size={10} />{t('ai_smartReply_copied')}</>
-                            : <><Copy size={10} />{t('ai_smartReply_copy')}</>
-                          }
+                        <button onClick={() => handleCopyReply(review.id, smartReplies[review.id])}
+                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors">
+                          {copiedReply === review.id ? <><Check size={10} />{t('ai_smartReply_copied')}</> : <><Copy size={10} />{t('ai_smartReply_copy')}</>}
                         </button>
                       </div>
                     </div>
                     {smartReplies[review.id]}
+                  </div>
+                )}
+
+                {/* Seller reply editor */}
+                {isSeller && replyEditorOpen.has(review.id) && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={replyDrafts[review.id] ?? ''}
+                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                      rows={3}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder={lang === 'ar' ? 'اكتب ردك هنا...' : 'Write your reply here...'}
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => handleSmartReply(review)} disabled={smartReplyLoading[review.id]}
+                        className="flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
+                        {smartReplyLoading[review.id]
+                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Generating...'}</>
+                          : <><Wand2 size={11} />{lang === 'ar' ? 'رد ذكي' : 'AI Reply'}</>}
+                      </button>
+                      <button onClick={() => handleSubmitReply(review.id)}
+                        disabled={replySubmitting[review.id] || !(replyDrafts[review.id] ?? '').trim()}
+                        className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
+                        {replySubmitting[review.id] && <Loader2 size={11} className="animate-spin" />}
+                        {lang === 'ar' ? 'نشر الرد' : 'Post Reply'}
+                      </button>
+                      <button onClick={() => closeReplyEditor(review.id)}
+                        className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-xl transition-colors">
+                        {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Seller reply display */}
+                {review.seller_reply && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-blue-700 flex items-center gap-1">
+                        <Store size={10} />{lang === 'ar' ? 'رد البائع' : "Seller's Reply"}
+                      </span>
+                      {isSeller && (
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => openReplyEditor(review.id, review.seller_reply)}
+                            className="text-[10px] font-bold text-blue-400 hover:text-blue-700 transition-colors">
+                            {lang === 'ar' ? 'تعديل' : 'Edit'}
+                          </button>
+                          <button onClick={() => handleDeleteReply(review.id)}
+                            className="text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors">
+                            {lang === 'ar' ? 'حذف الرد' : 'Delete reply'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-700 leading-relaxed">{review.seller_reply}</p>
                   </div>
                 )}
               </div>
@@ -1220,13 +1384,21 @@ export default function ProductDetailsPage() {
               <Plus size={13} />
             </button>
           </div>
-          <button onClick={handleAddToCart} disabled={stockLevel === 'out'}
+          <button onClick={handleAddToCart} disabled={!canAddToCart}
             className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2
-              ${stockLevel === 'out' ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              ${!canAddToCart ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
               : added ? 'bg-emerald-500 text-white' : 'bg-blue-900 hover:bg-blue-800 text-white active:scale-[0.98]'}`}
           >
             <ShoppingCart size={15} />
-            {stockLevel === 'out' ? t('btn_outOfStock') : added ? t('btn_addedToCart') : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
+            {stockLevel === 'out'
+              ? t('btn_outOfStock')
+              : !deliveryOption
+                ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
+                : needsLocation && !locationConfirmed
+                  ? (lang === 'ar' ? 'أكد موقعك' : 'Confirm Location')
+                  : added
+                    ? t('btn_addedToCart')
+                    : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
           </button>
         </div>
       </div>
