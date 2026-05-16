@@ -150,6 +150,21 @@ const ORDER_STATUS_META = {
 
 const DELIVERY_OPTION_ICON = { fast: '⚡', pickup: '🏠', nationwide: '🚚', seller_delivery: '🛵', third_party: '📦' };
 
+// Status priority for deriving the 'worst' status across all items in one order
+// Used to tint the order-card top stripe without a single canonical status
+const STATUS_PRIORITY = {
+  cancelled: 0, pending: 1, processing: 2, confirmed: 3, shipped: 4, delivered: 5,
+};
+function deriveOrderStripeStatus(items) {
+  if (!items?.length) return 'confirmed';
+  // Show the 'lowest priority' (least complete) item status
+  return items.reduce((worst, item) => {
+    const itemStatus = item.status ?? 'confirmed';
+    return (STATUS_PRIORITY[itemStatus] ?? 3) < (STATUS_PRIORITY[worst] ?? 3)
+      ? itemStatus : worst;
+  }, 'delivered');
+}
+
 function OrderStatusBadge({ status, lang }) {
   const m = ORDER_STATUS_META[status] ?? ORDER_STATUS_META.confirmed;
   return (
@@ -218,7 +233,8 @@ function OrdersTab({ t, lang, isRtl, user }) {
             lang === 'ar' ? 'ar-SA' : 'en-US',
             { year: 'numeric', month: 'short', day: 'numeric' }
           );
-          const statusMeta = ORDER_STATUS_META[order.status] ?? ORDER_STATUS_META.confirmed;
+          const stripeStatus = deriveOrderStripeStatus(order.order_items);
+          const statusMeta = ORDER_STATUS_META[stripeStatus] ?? ORDER_STATUS_META.confirmed;
           const isOpen     = !!expanded[order.id];
           const itemCount  = order.order_items?.length ?? 0;
 
@@ -240,7 +256,10 @@ function OrdersTab({ t, lang, isRtl, user }) {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <OrderStatusBadge status={order.status} lang={lang} />
+                    {/* No single order-level badge — per-item badges shown inside */}
+                    <span className="text-[11px] text-gray-400 font-medium">
+                      {lang === 'ar' ? `${itemCount} منتج` : `${itemCount} item${itemCount !== 1 ? 's' : ''}`}
+                    </span>
                     <span className="text-base font-extrabold text-blue-900">
                       {Number(order.total_amount ?? 0).toFixed(0)}
                       <span className="text-sm font-bold ms-1">{t.sar}</span>
@@ -280,10 +299,13 @@ function OrdersTab({ t, lang, isRtl, user }) {
                       : null;
 
                     return (
-                      <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0`}>
+                      <div key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-2xl">
+                        {/* Emoji thumbnail */}
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient ?? 'from-blue-50 to-indigo-100'} flex items-center justify-center text-lg shrink-0 mt-0.5`}>
                           {item.emoji ?? '📦'}
                         </div>
+
+                        {/* Product info */}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-800 truncate">{name}</p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -296,8 +318,14 @@ function OrdersTab({ t, lang, isRtl, user }) {
                               </span>
                             )}
                           </div>
+                          {/* ← Per-item status badge */}
+                          <div className="mt-1.5">
+                            <OrderStatusBadge status={item.status ?? 'confirmed'} lang={lang} />
+                          </div>
                         </div>
-                        <p className="text-sm font-extrabold text-blue-900 shrink-0">
+
+                        {/* Line total */}
+                        <p className="text-sm font-extrabold text-blue-900 shrink-0 mt-0.5">
                           {lineTotal.toFixed(0)} <span className="text-xs font-bold">{t.sar}</span>
                         </p>
                       </div>

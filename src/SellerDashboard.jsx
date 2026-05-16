@@ -1585,7 +1585,8 @@ function ProducerOrdersTab({ t, showToast, user, lang }) {
     if (!user) return;
     supabase
       .from('order_items')
-      .select('*, orders(order_number, created_at, status, user_id, total_amount)')
+      // Fetch item-level status + parent order metadata
+      .select('*, orders(id, order_number, created_at, total_amount)')
       .eq('producer_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
@@ -1595,29 +1596,26 @@ function ProducerOrdersTab({ t, showToast, user, lang }) {
       });
   }, [user]);
 
-  const handleStatusUpdate = async (itemId, orderId, newStatus) => {
-    // Optimistic update
+  const handleStatusUpdate = async (itemId, newStatus) => {
+    // Optimistic update — patch item.status directly (item-level)
     setOrderItems((prev) =>
       prev.map((item) =>
-        item.id === itemId
-          ? { ...item, orders: { ...item.orders, status: newStatus } }
-          : item
+        item.id === itemId ? { ...item, status: newStatus } : item
       )
     );
     const { error } = await supabase
-      .from('orders')
+      .from('order_items')
       .update({ status: newStatus })
-      .eq('id', orderId);
+      .eq('id', itemId);          // ← targets the specific item row only
     if (error) {
       showToast(t.ord_updateErr + error.message, 'error');
-      // Rollback
-      setOrderItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? { ...item, orders: { ...item.orders, status: item.orders.status } }
-            : item
-        )
-      );
+      // Rollback: re-fetch to restore authoritative state
+      supabase
+        .from('order_items')
+        .select('*, orders(id, order_number, created_at, total_amount)')
+        .eq('producer_id', user.id)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => setOrderItems(data ?? []));
     } else {
       showToast(t.ord_updateOk, 'success');
     }
@@ -1677,8 +1675,8 @@ function ProducerOrdersTab({ t, showToast, user, lang }) {
                   </p>
                 </div>
                 <StatusDropdown
-                  currentStatus={order.status ?? 'pending'}
-                  onUpdate={(s) => handleStatusUpdate(item.id, order.id ?? item.order_id, s)}
+                  currentStatus={item.status ?? 'confirmed'}   // ← item-level status
+                  onUpdate={(s) => handleStatusUpdate(item.id, s)}
                   lang={isRtl ? 'ar' : 'en'}
                   t={t}
                 />
