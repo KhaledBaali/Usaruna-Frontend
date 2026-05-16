@@ -86,7 +86,9 @@ export async function fetchProducts() {
       // using the local CATEGORY_EMOJI_BY_ID / CATEGORY_GRADIENT_BY_ID maps instead,
       // avoiding any RLS or FK-registration issues on the categories table.
       .select('*, producer_profiles(*), cities(*)')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .gt('stock', 0);    // ← Hide out-of-stock from public storefront only
+                          //   (SellerDashboard uses its own query — producers still see all)
     if (error) throw error;
     return data.map(normaliseProduct);
   } catch (err) {
