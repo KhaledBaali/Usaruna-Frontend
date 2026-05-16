@@ -390,44 +390,76 @@ export default function CheckoutPage() {
     );
   }
 
+  // ── Parse RPC error into a user-friendly message ──────────
+  const parseRpcError = (msg, isRtl) => {
+    if (!msg) return isRtl ? 'حدث خطأ غير متوقع' : 'Unexpected error occurred';
+    if (msg.includes('OUT_OF_STOCK')) {
+      // Extract product name from the error message
+      const match = msg.match(/product "([^"]+)"/);
+      const productName = match?.[1] ?? (isRtl ? 'أحد المنتجات' : 'a product');
+      return isRtl
+        ? `نفدت الكمية: "${productName}" غير متوفر بالكمية المطلوبة`
+        : `Out of stock: "${productName}" doesn't have enough quantity`;
+    }
+    if (msg.includes('PRODUCT_NOT_FOUND')) {
+      return isRtl
+        ? 'أحد المنتجات في سلتك لم يعد متاحاً. يرجى تحديث السلة.'
+        : 'A product in your cart is no longer available. Please update your cart.';
+    }
+    if (msg.includes('EMPTY_CART')) {
+      return isRtl ? 'السلة فارغة' : 'Your cart is empty';
+    }
+    if (msg.includes('UNAUTHORIZED')) {
+      return isRtl ? 'يرجى تسجيل الدخول أولاً' : 'Please log in first';
+    }
+    return msg;
+  };
+
   const handlePay = async () => {
-    setLoading(true);
-    setOrderError(null);
-    await new Promise((res) => setTimeout(res, 1800));
-    const num = Math.floor(100000 + Math.random() * 900000).toString();
-
-    if (user) {
-      const { error } = await supabase.rpc('place_order', {
-        p_user_id:        user.id,
-        p_order_number:   num,
-        p_total:          grandTotal,
-        p_delivery_total: deliveryTotal,
-        p_pay_method:     payMethod,
-        p_items:          items.map((i) => ({
-          product_id:      i.id,
-          name_ar:         i.name       ?? null,
-          name_en:         i.nameEn     ?? null,
-          price:           i.price,
-          qty:             i.qty,
-          emoji:           i.emoji      ?? null,
-          gradient:        i.gradient   ?? null,
-          delivery_option: i.deliveryOption ?? null,
-          delivery_price:  i.deliveryPrice  ?? 0,
-        })),
-      });
-
-      if (error) {
-        setOrderError(error.message);
-        setLoading(false);
-        return;
-      }
+    // Guest guard — redirect to login
+    if (!user) {
+      navigate('/login?redirect=/checkout');
+      return;
     }
 
-    setOrderNum(num);
+    setLoading(true);
+    setOrderError(null);
+
+    const num = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const { data: rpcData, error } = await supabase.rpc('place_order', {
+      p_user_id:        user.id,
+      p_order_number:   num,
+      p_total:          grandTotal,
+      p_delivery_total: deliveryTotal,
+      p_pay_method:     payMethod,
+      p_items:          items.map((i) => ({
+        product_id:      i.id,
+        name_ar:         i.name       ?? null,
+        name_en:         i.nameEn     ?? null,
+        price:           i.price,
+        qty:             i.qty,
+        emoji:           i.emoji      ?? null,
+        gradient:        i.gradient   ?? null,
+        delivery_option: i.deliveryOption ?? null,
+        delivery_price:  i.deliveryPrice  ?? 0,
+      })),
+    });
+
+    if (error) {
+      console.error('[Checkout] place_order RPC failed:', error);
+      setOrderError(parseRpcError(error.message, isRtl));
+      setLoading(false);
+      return;
+    }
+
+    // RPC succeeded — cart was cleared server-side; clear local state too
     clearCart();
+    setOrderNum(rpcData?.order_number ?? num);
     setDone(true);
     setLoading(false);
   };
+
 
   const canPay = payMethod !== 'card' || (
     card.number.replace(/\s/g, '').length >= 12 &&
