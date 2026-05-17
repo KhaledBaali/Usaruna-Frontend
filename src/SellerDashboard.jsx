@@ -721,7 +721,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     if (!raw || enhancingAr) return;
     setEnhancingAr(true);
     try {
-      const result = await enhanceDescription(raw);
+      const result = await enhanceDescription(raw, 'ar');
       if (result) setDescAr(result);
     } catch { } finally { setEnhancingAr(false); }
   };
@@ -731,7 +731,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     if (!raw || enhancingEn) return;
     setEnhancingEn(true);
     try {
-      const result = await enhanceDescription(raw);
+      const result = await enhanceDescription(raw, 'en');
       if (result) setDescEn(result);
     } catch { } finally { setEnhancingEn(false); }
   };
@@ -1298,7 +1298,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
     if (!raw || enhancingAr) return;
     setEnhancingAr(true);
     try {
-      const result = await enhanceDescription(raw);
+      const result = await enhanceDescription(raw, 'ar');
       if (result) set('description_ar', result);
     } catch { /* silently fail */ } finally { setEnhancingAr(false); }
   };
@@ -1308,7 +1308,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
     if (!raw || enhancingEn) return;
     setEnhancingEn(true);
     try {
-      const result = await enhanceDescription(raw);
+      const result = await enhanceDescription(raw, 'en');
       if (result) set('description_en', result);
     } catch { /* silently fail */ } finally { setEnhancingEn(false); }
   };

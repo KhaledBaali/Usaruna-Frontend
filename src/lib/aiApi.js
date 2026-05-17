@@ -11,11 +11,11 @@ export async function summarizeReviews(reviews, lang = 'en') {
   return summary;
 }
 
-export async function enhanceDescription(description) {
+export async function enhanceDescription(description, lang = 'en') {
   const res = await fetch(`${AI_BASE}/enhance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description }),
+    body: JSON.stringify({ description, lang }),
   });
   if (!res.ok) throw new Error('AI enhance failed');
   const { enhanced_description } = await res.json();
