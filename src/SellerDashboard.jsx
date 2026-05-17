@@ -7,10 +7,11 @@ import {
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
   Printer, Plus, Globe, Pencil, Zap, Home, Inbox, ChevronDown,
   Clock, Circle, RefreshCw, Check, CreditCard, Search, Phone, MessageCircle,
-  Upload, FileImage,
+  Upload, FileImage, Wand2,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
+import { enhanceDescription } from './lib/aiApi';
 import logo from './assets/logo.png';
 
 // ─── Translations ──────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ const T = {
     ap_nameAr: 'اسم المنتج (عربي)', ap_nameEn: 'اسم المنتج (إنجليزي)',
     ap_descAr: 'وصف المنتج (عربي)', ap_descEn: 'وصف المنتج (إنجليزي)',
     ap_price: 'السعر (ريال سعودي)', ap_stock: 'الكمية المتاحة',
-    ap_weight: 'الوزن (كجم)', ap_weightPlaceholder: 'مثال: 0.500',
+    ap_prepTime: 'وقت التحضير (دقائق)', ap_prepTimePlaceholder: 'مثال: 20',
     ap_classification: 'التصنيف والموقع',
     ap_category: 'الفئة', ap_city: 'المدينة',
     ap_shipping: 'الشحن والتوصيل',
@@ -187,7 +188,7 @@ const T = {
     ap_nameAr: 'Product Name (Arabic)', ap_nameEn: 'Product Name (English)',
     ap_descAr: 'Description (Arabic)', ap_descEn: 'Description (English)',
     ap_price: 'Price (SAR)', ap_stock: 'Available Stock',
-    ap_weight: 'Weight (kg)', ap_weightPlaceholder: 'e.g. 0.500',
+    ap_prepTime: 'Preparation Time (minutes)', ap_prepTimePlaceholder: 'e.g. 20',
     ap_classification: 'Classification & Location',
     ap_category: 'Category', ap_city: 'City',
     ap_shipping: 'Shipping & Delivery',
@@ -687,12 +688,19 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     return product.image_url ? [product.image_url] : [];
   })();
 
+  const [nameAr,         setNameAr]         = useState(product.name_ar        ?? '');
+  const [nameEn,         setNameEn]         = useState(product.name_en        ?? '');
+  const [descAr,         setDescAr]         = useState(product.description_ar ?? '');
+  const [descEn,         setDescEn]         = useState(product.description_en ?? '');
   const [price,          setPrice]          = useState(String(product.price ?? ''));
   const [stock,          setStock]          = useState(String(product.stock ?? ''));
+  const [prepTime,       setPrepTime]       = useState(String(product.prep_time ?? ''));
   const [deliveryTypes,  setDeliveryTypes]  = useState(parseDeliveryTypes(product));
   const [saving,         setSaving]         = useState(false);
   const [deleting,       setDeleting]       = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
+  const [enhancingAr,    setEnhancingAr]    = useState(false);
+  const [enhancingEn,    setEnhancingEn]    = useState(false);
   // Images: mix of URL strings (existing) and File objects (new uploads)
   const [images,         setImages]         = useState(existingImages);
 
@@ -706,6 +714,26 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
       }
       return prev.length < 3 ? [...prev, type] : prev; // max 3
     });
+  };
+
+  const handleEnhanceAr = async () => {
+    const raw = descAr.trim();
+    if (!raw || enhancingAr) return;
+    setEnhancingAr(true);
+    try {
+      const result = await enhanceDescription(raw);
+      if (result) setDescAr(result);
+    } catch { } finally { setEnhancingAr(false); }
+  };
+
+  const handleEnhanceEn = async () => {
+    const raw = descEn.trim();
+    if (!raw || enhancingEn) return;
+    setEnhancingEn(true);
+    try {
+      const result = await enhanceDescription(raw);
+      if (result) setDescEn(result);
+    } catch { } finally { setEnhancingEn(false); }
   };
 
   const handleSave = async () => {
@@ -747,21 +775,25 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     }
 
     const updatePayload = {
-      price:         priceVal,
-      stock:         stockVal,
-      is_perishable: deliveryTypes.some((d) => d !== 'third_party'),
-      delivery_type: serializeDeliveryTypes(deliveryTypes),
+      price:          priceVal,
+      stock:          stockVal,
+      is_perishable:  deliveryTypes.some((d) => d !== 'third_party'),
+      delivery_type:  serializeDeliveryTypes(deliveryTypes),
+      name_ar:        nameAr.trim() || product.name_ar,
+      name_en:        nameEn.trim()  || null,
+      description_ar: descAr.trim() || null,
+      description_en: descEn.trim() || null,
+      prep_time:      prepTime ? parseInt(prepTime) : null,
     };
     if (finalUrls.length > 0) {
       updatePayload.image_url = finalUrls[0];
-      updatePayload.images    = finalUrls;
     }
 
     const { data, error } = await supabase
       .from('products')
       .update(updatePayload)
       .eq('id', product.id)
-      .select('id, price, stock, is_perishable, delivery_type, image_url, images')
+      .select('id, name_ar, name_en, description_ar, description_en, price, stock, is_perishable, delivery_type, image_url, prep_time')
       .single();
 
     setSaving(false);
@@ -802,7 +834,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
       style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
     >
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 shrink-0">
@@ -824,8 +856,52 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
         {/* ── Scrollable body ── */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* Price + Stock */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Names */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_nameAr} <span className="text-red-400">*</span></label>
+              <input type="text" value={nameAr} onChange={(e) => setNameAr(e.target.value)}
+                className={inputCls} disabled={busy} placeholder="اسم المنتج" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_nameEn}</label>
+              <input type="text" value={nameEn} onChange={(e) => setNameEn(e.target.value)}
+                className={inputCls} disabled={busy} placeholder="Product name" dir="ltr" />
+            </div>
+          </div>
+
+          {/* Descriptions */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_descAr}</label>
+              <textarea rows={3} value={descAr} onChange={(e) => setDescAr(e.target.value)}
+                className={`${inputCls} resize-none`} disabled={busy} placeholder="وصف المنتج" />
+              <button type="button" onClick={handleEnhanceAr}
+                disabled={busy || enhancingAr || !descAr.trim()}
+                className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                {enhancingAr
+                  ? <><Loader2 size={11} className="animate-spin" />{isRtl ? 'جاري التحسين…' : 'Enhancing…'}</>
+                  : <><Wand2 size={11} />{isRtl ? '✨ تحسين بالذكاء الاصطناعي' : '✨ Enhance with AI'}</>
+                }
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_descEn}</label>
+              <textarea rows={3} value={descEn} onChange={(e) => setDescEn(e.target.value)}
+                className={`${inputCls} resize-none`} disabled={busy} placeholder="Product description" dir="ltr" />
+              <button type="button" onClick={handleEnhanceEn}
+                disabled={busy || enhancingEn || !descEn.trim()}
+                className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                {enhancingEn
+                  ? <><Loader2 size={11} className="animate-spin" />{'Enhancing…'}</>
+                  : <><Wand2 size={11} />{'✨ Enhance with AI'}</>
+                }
+              </button>
+            </div>
+          </div>
+
+          {/* Price + Stock + Prep Time */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.mp_editPrice}</label>
               <input type="number" min="0" step="0.01" value={price}
@@ -837,6 +913,17 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
               <input type="number" min="0" step="1" value={stock}
                 onChange={(e) => setStock(e.target.value)}
                 className={inputCls} disabled={busy} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_prepTime}</label>
+              <div className="relative">
+                <input type="number" min="0" step="1" value={prepTime}
+                  onChange={(e) => setPrepTime(e.target.value)}
+                  className={inputCls} disabled={busy} placeholder="0" />
+                <span className="absolute end-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-gray-400 pointer-events-none">
+                  {isRtl ? 'د' : 'min'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -961,7 +1048,7 @@ function MyProductsTab({ profile, t, showToast }) {
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name_ar, name_en, price, stock, is_active, image_url, is_perishable, delivery_type')
+      .select('id, name_ar, name_en, description_ar, description_en, price, stock, is_active, image_url, is_perishable, delivery_type, prep_time')
       .eq('producer_id', profile.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -1191,18 +1278,40 @@ const EMPTY_PRODUCT = {
   price: '', category_id: '',
   delivery_types: ['third_party'],
   stock: '',
-  weight: '',
+  prep_time: '',
   sizes: [], colors: [], specs: [],
 };
 
 const PHASE_LABELS = (t) => ({ idle: null, uploading: t.ap_uploading, saving: t.ap_saving });
 
 function AddProductForm({ profile, cities, categories, showToast, t }) {
-  const [form,       setForm]       = useState(EMPTY_PRODUCT);
-  const [imageFiles, setImageFiles] = useState([]);
-  const [phase,      setPhase]      = useState('idle');
-  const [fieldErrs,  setFieldErrs]  = useState({});
+  const [form,         setForm]         = useState(EMPTY_PRODUCT);
+  const [imageFiles,   setImageFiles]   = useState([]);
+  const [phase,        setPhase]        = useState('idle');
+  const [fieldErrs,    setFieldErrs]    = useState({});
+  const [enhancingAr,  setEnhancingAr]  = useState(false);
+  const [enhancingEn,  setEnhancingEn]  = useState(false);
   const isRtl = t.dir === 'rtl';
+
+  const handleEnhanceAr = async () => {
+    const raw = form.description_ar.trim();
+    if (!raw || enhancingAr) return;
+    setEnhancingAr(true);
+    try {
+      const result = await enhanceDescription(raw);
+      if (result) set('description_ar', result);
+    } catch { /* silently fail */ } finally { setEnhancingAr(false); }
+  };
+
+  const handleEnhanceEn = async () => {
+    const raw = form.description_en.trim();
+    if (!raw || enhancingEn) return;
+    setEnhancingEn(true);
+    try {
+      const result = await enhanceDescription(raw);
+      if (result) set('description_en', result);
+    } catch { /* silently fail */ } finally { setEnhancingEn(false); }
+  };
 
   const submitting = phase !== 'idle';
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -1261,7 +1370,6 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         delivery_type: serializeDeliveryTypes(delivTypes),
         stock:         parseInt(form.stock),
         image_url,
-        images:        images_urls.length > 0 ? images_urls : null,
         is_active:     true,
       };
       // Optional text columns — only include when the column exists in your schema
@@ -1269,11 +1377,11 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       const nameEn       = form.name_en.trim();
       const descAr       = form.description_ar.trim();
       const descEn       = form.description_en.trim();
-      const weightVal    = form.weight ? parseFloat(form.weight) : null;
+      const prepTimeVal  = form.prep_time ? parseInt(form.prep_time) : null;
       if (nameEn)                  payload.name_en        = nameEn;
       if (descAr)                  payload.description_ar = descAr;
       if (descEn)                  payload.description_en = descEn;
-      if (weightVal !== null)      payload.weight         = weightVal;
+      if (prepTimeVal !== null)    payload.prep_time      = prepTimeVal;
       if (form.sizes.length)       payload.sizes          = form.sizes;
       if (form.colors.length)      payload.colors         = form.colors;
       if (form.specs.length)       payload.specs          = form.specs;
@@ -1368,12 +1476,28 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
             <Field label={t.ap_descAr}>
               <textarea placeholder="صف منتجك — المكونات، الوزن، إلخ…" value={form.description_ar}
                 onChange={(e) => set('description_ar', e.target.value)}
-                rows={2} className={`${inputCls} resize-none`} disabled={submitting} />
+                rows={3} className={`${inputCls} resize-none`} disabled={submitting} />
+              <button type="button" onClick={handleEnhanceAr}
+                disabled={submitting || enhancingAr || !form.description_ar.trim()}
+                className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                {enhancingAr
+                  ? <><Loader2 size={11} className="animate-spin" />{isRtl ? 'جاري التحسين…' : 'Enhancing…'}</>
+                  : <><Wand2 size={11} />{isRtl ? '✨ تحسين بالذكاء الاصطناعي' : '✨ Enhance with AI'}</>
+                }
+              </button>
             </Field>
             <Field label={t.ap_descEn}>
               <textarea placeholder="Describe your product in English…" value={form.description_en}
                 onChange={(e) => set('description_en', e.target.value)}
-                rows={2} className={`${inputCls} resize-none`} disabled={submitting} dir="ltr" />
+                rows={3} className={`${inputCls} resize-none`} disabled={submitting} dir="ltr" />
+              <button type="button" onClick={handleEnhanceEn}
+                disabled={submitting || enhancingEn || !form.description_en.trim()}
+                className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-600 hover:text-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                {enhancingEn
+                  ? <><Loader2 size={11} className="animate-spin" />{isRtl ? 'جاري التحسين…' : 'Enhancing…'}</>
+                  : <><Wand2 size={11} />{isRtl ? '✨ تحسين بالذكاء الاصطناعي' : '✨ Enhance with AI'}</>
+                }
+              </button>
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1389,20 +1513,20 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
               </Field>
             </div>
 
-            {/* Weight — الوزن */}
+            {/* Preparation time */}
             <div className="grid grid-cols-2 gap-4">
-              <Field label={t.ap_weight}>
+              <Field label={t.ap_prepTime}>
                 <div className="relative">
                   <input
-                    type="number" min="0" step="0.001"
-                    placeholder={t.ap_weightPlaceholder}
-                    value={form.weight}
-                    onChange={(e) => set('weight', e.target.value)}
+                    type="number" min="0" step="1"
+                    placeholder={t.ap_prepTimePlaceholder}
+                    value={form.prep_time}
+                    onChange={(e) => set('prep_time', e.target.value)}
                     className={inputCls}
                     disabled={submitting}
                   />
                   <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 pointer-events-none">
-                    kg
+                    {t.dir === 'rtl' ? 'دقيقة' : 'min'}
                   </span>
                 </div>
               </Field>

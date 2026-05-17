@@ -101,8 +101,9 @@ export default {
   card_wishlist:    'Add to Wishlist',
 
   // ─── Delivery tags ───────────────────────────────────────────────────────────
-  tag_fastDelivery:   'Fresh - Fast Delivery',
-  tag_nationwide:    'Ships nationwide (24-48 hours)',
+  tag_fastDelivery:   'Fresh - Seller Delivery',
+  tag_sellerDelivery: 'Fresh - Seller Delivery',
+  tag_nationwide:     'Ships nationwide (24-48 hours)',
 
   // ─── Product details — nav & breadcrumb ──────────────────────────────────────
   pd_backToProducts: 'Back to Products',

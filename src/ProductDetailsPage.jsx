@@ -5,7 +5,7 @@ import {
   ChevronRight, ChevronLeft, Minus, Plus, Share2,
   Shield, Truck, Award, Phone, ThumbsUp, CheckCircle,
   Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
-  Wand2, Copy, Check, Loader2, Zap, MessageCircle, Trash2, Store,
+  Wand2, Copy, Check, Loader2, Zap, MessageCircle, Trash2, Store, AlertCircle,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
 import { useLang } from './contexts/LanguageContext';
@@ -159,10 +159,17 @@ export default function ProductDetailsPage() {
   const [enhancedDescEn,  setEnhancedDescEn]  = useState(null);
   const [enhancingAr,     setEnhancingAr]     = useState(false);
   const [enhancingEn,     setEnhancingEn]     = useState(false);
+  const [customerLocation, setCustomerLocation] = useState(null);
+
+  const sellerEta = product?.prepTime
+    ? (lang === 'ar'
+        ? `يُوصَّل بعد ${product.prepTime} دقيقة تحضير`
+        : `Delivered after ${product.prepTime} min prep`)
+    : null;
 
   const DELIVERY_OPTIONS = [
     { id: 'pickup',          emoji: '🏪', label: t('delivery_pickup_label'), desc: t('delivery_pickup_desc'), price: 0,  eta: t('delivery_pickup_eta')  },
-    { id: 'seller_delivery', emoji: '🛵', label: t('delivery_seller_label'), desc: t('delivery_seller_desc'), price: 15, eta: t('delivery_seller_eta')  },
+    { id: 'seller_delivery', emoji: '🛵', label: t('delivery_seller_label'), desc: t('delivery_seller_desc'), price: 15, eta: sellerEta ?? t('delivery_seller_eta')  },
     { id: 'third_party',     emoji: '📦', label: t('delivery_3p_label'),     desc: t('delivery_3p_desc'),     price: 25, eta: t('delivery_3p_eta')      },
   ];
 
@@ -302,8 +309,6 @@ export default function ProductDetailsPage() {
       setSmartReplyLoading((prev) => ({ ...prev, [review.id]: false }));
     }
   };
-
-  const [customerLocation, setCustomerLocation] = useState(null);
 
   const handleEnhanceAr = async () => {
     const raw = product?.description;
@@ -809,13 +814,19 @@ export default function ProductDetailsPage() {
                 </div>
               )}
 
-              {/* Seller delivery: customer confirms their delivery address */}
+              {/* Seller delivery: customer confirms their delivery address — must be same city */}
               {deliveryOption === 'seller_delivery' && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className={`text-xs font-bold text-gray-500 mb-2.5 flex items-center gap-1.5 ${dir === 'ltr' ? 'flex-row-reverse' : ''}`}>
+                  <p className={`text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1.5 ${dir === 'ltr' ? 'flex-row-reverse' : ''}`}>
                     <MapPin size={12} className="text-blue-600 shrink-0" />
                     {lang === 'ar' ? 'حدد موقعك لتوصيل البائع' : 'Set your location for seller delivery'}
                   </p>
+                  <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-xl p-2.5 mb-2.5 text-[11px] text-amber-800 font-semibold">
+                    <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                    {lang === 'ar'
+                      ? `يجب أن يكون موقعك في ${product.sellerCity ?? 'نفس مدينة البائع'} — إذا كنت في مدينة أخرى اختر شركة الشحن أو الاستلام الشخصي`
+                      : `Your location must be in ${product.sellerCityEn ?? product.sellerCity ?? 'the seller\'s city'} — for other cities choose Shipping Co. or Pickup`}
+                  </div>
                   <LocationPicker
                     key="seller-delivery-picker"
                     mode="customer"
@@ -944,9 +955,11 @@ export default function ProductDetailsPage() {
               🏠
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-extrabold text-gray-900 text-base">{px(product.family, product.familyEn)}</div>
-              <div className="flex items-center gap-1.5 text-gray-500 text-sm mt-0.5">
-                <MapPin size={12} className="shrink-0" />{px(product.sellerCity, product.sellerCityEn)}
+              <div className="flex items-center gap-1.5 font-extrabold text-gray-900 text-base">
+                <MapPin size={13} className="text-blue-400 shrink-0" />
+                {px(product.family, product.familyEn)}
+                <span className="text-gray-300 font-normal">·</span>
+                <span className="text-gray-500 font-semibold text-sm">{px(product.sellerCity, product.sellerCityEn)}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-2">
                 <div className="flex items-center gap-1.5">

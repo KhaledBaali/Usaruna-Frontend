@@ -77,6 +77,7 @@ function normaliseProduct(row) {
     whatsapp:      p?.whatsapp       ?? row.whatsapp,
     partnerSince:  p?.partner_since  ?? row.partnerSince,
     weight:        row.weight        ?? null,
+    prepTime:      row.prep_time     ?? null,
     rating:        row.rating        ?? 0,
     reviews:       row.reviews       ?? 0,
     deliveryTypes,

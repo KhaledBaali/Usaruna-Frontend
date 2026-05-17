@@ -33,8 +33,7 @@ function DeliveryTag({ isPerishable }) {
   if (isPerishable) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 w-fit">
-        <Zap size={11} className="shrink-0" />
-        {t('tag_fastDelivery')}
+        🛵 {t('tag_sellerDelivery')}
       </span>
     );
   }
@@ -226,10 +225,9 @@ export default function HomePage() {
       .finally(() => setLoadingProducts(false));
   }, []);
 
-  // Two static UI-only entries prepended to the live DB categories
+  // One static UI-only entry prepended to the live DB categories
   const CATEGORIES = useMemo(() => [
-    { slug: 'all',  name: t('cat_all'),          emoji: null, special: false },
-    { slug: 'fast', name: t('cat_fastDelivery'), emoji: '⚡', special: true  },
+    { slug: 'all',  name: t('cat_all'), emoji: null, special: false },
     ...dbCategories.map((cat) => ({
       slug:    cat.slug,
       name:    lang === 'ar' ? cat.name_ar : (cat.name_en ?? cat.name_ar),
@@ -244,8 +242,7 @@ export default function HomePage() {
   const handleAddToCart = (product) => addItem(product);
 
   const { perishableInCity, nationwideProducts } = useMemo(() => {
-    const isFast = activeCategory === 'fast';
-    const query  = searchQuery.trim().toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
 
     const matchesSearch = (p) =>
       !query ||
@@ -255,14 +252,12 @@ export default function HomePage() {
       p.familyEn?.toLowerCase().includes(query);
 
     const matchesCat = (p) =>
-      activeCategory === 'all' || isFast || p.category === activeCategory;
+      activeCategory === 'all' || p.category === activeCategory;
 
     const perishable = products.filter(
       (p) => p.isPerishable && p.sellerCity === currentCityAr && matchesSearch(p) && matchesCat(p),
     );
-    const nationwide = isFast
-      ? []
-      : products.filter((p) => !p.isPerishable && matchesSearch(p) && matchesCat(p));
+    const nationwide = products.filter((p) => !p.isPerishable && matchesSearch(p) && matchesCat(p));
 
     return { perishableInCity: perishable, nationwideProducts: nationwide };
   }, [currentCityAr, products, activeCategory, searchQuery]);
