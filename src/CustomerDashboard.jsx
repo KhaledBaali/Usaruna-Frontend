@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 import {
   User, ShoppingBag, Heart, LogOut, Globe, ChevronLeft, ChevronRight,
   Package, MapPin, Star, ArrowLeft, ArrowRight, Clock, CheckCircle,
-  Loader2, ShoppingCart,
+  Loader2, ShoppingCart, AlertTriangle, Trash2,
 } from 'lucide-react';
 import { useLang } from './contexts/LanguageContext';
 import { useAuth } from './contexts/AuthContext';
@@ -32,6 +32,13 @@ const T = {
     addToCart: 'أضف للسلة', sar: 'ر.س',
     browse: 'تصفح المنتجات', logout: 'تسجيل الخروج',
     backToSite: 'العودة للموقع', langBtn: 'English',
+    danger_zone: 'منطقة الخطر',
+    delete_account: 'حذف الحساب',
+    delete_account_warning: 'سيؤدي هذا إلى حذف حسابك وجميع بياناتك نهائياً. لا يمكن التراجع عن هذا الإجراء.',
+    delete_account_confirm: 'نعم، احذف حسابي',
+    delete_account_cancel: 'إلغاء',
+    delete_account_deleting: 'جاري الحذف…',
+    delete_account_error: 'حدث خطأ أثناء الحذف. يرجى المحاولة مرة أخرى.',
   },
   en: {
     brand: 'Usaruna', pageTitle: 'My Account',
@@ -49,6 +56,13 @@ const T = {
     addToCart: 'Add to Cart', sar: 'SAR',
     browse: 'Browse Products', logout: 'Sign Out',
     backToSite: 'Back to site', langBtn: 'العربية',
+    danger_zone: 'Danger Zone',
+    delete_account: 'Delete Account',
+    delete_account_warning: 'This will permanently delete your account and all your data. This action cannot be undone.',
+    delete_account_confirm: 'Yes, delete my account',
+    delete_account_cancel: 'Cancel',
+    delete_account_deleting: 'Deleting…',
+    delete_account_error: 'An error occurred while deleting. Please try again.',
   },
 };
 
@@ -97,12 +111,30 @@ function Navbar({ lang, dir, toggleLang, t, totalCount }) {
 
 // ─── PROFILE TAB ──────────────────────────────────────────────────────────────
 
-function ProfileTab({ user, displayName, t, lang }) {
+function ProfileTab({ user, displayName, t, lang, logout, navigate }) {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting,        setDeleting]        = useState(false);
+  const [deleteError,     setDeleteError]     = useState('');
+
   const joinedDate = user?.created_at
     ? new Date(user.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', {
         year: 'numeric', month: 'long', day: 'numeric',
       })
     : '—';
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { error } = await supabase.rpc('delete_my_account');
+      if (error) throw error;
+      await logout();
+      navigate('/');
+    } catch {
+      setDeleteError(t.delete_account_error);
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="max-w-xl mx-auto">
@@ -124,6 +156,65 @@ function ProfileTab({ user, displayName, t, lang }) {
           </div>
         </div>
       </div>
+
+      {/* ── Danger Zone ── */}
+      <div className="mt-6 rounded-3xl border border-red-200 bg-red-50/50 p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertTriangle size={14} className="text-red-500 shrink-0" />
+          <h3 className="text-sm font-extrabold text-red-600">{t.delete_account}</h3>
+        </div>
+        <p className="text-xs text-gray-500 leading-relaxed mb-4">{t.delete_account_warning}</p>
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-red-300 text-red-600 text-sm font-bold hover:bg-red-100 active:scale-[0.98] transition-all"
+        >
+          <Trash2 size={14} />
+          {t.delete_account}
+        </button>
+      </div>
+
+      {/* ── Confirmation Modal ── */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget && !deleting) setShowDeleteModal(false); }}
+        >
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center">
+                <AlertTriangle size={26} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900 mb-2">{t.delete_account}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{t.delete_account_warning}</p>
+              </div>
+              {deleteError && (
+                <p className="text-sm text-red-600 font-semibold">{deleteError}</p>
+              )}
+              <div className="flex flex-col gap-2.5 w-full mt-1">
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleting}
+                  className="w-full py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {deleting
+                    ? <><Loader2 size={14} className="animate-spin" />{t.delete_account_deleting}</>
+                    : <><Trash2 size={14} />{t.delete_account_confirm}</>
+                  }
+                </button>
+                <button
+                  onClick={() => { setShowDeleteModal(false); setDeleteError(''); }}
+                  disabled={deleting}
+                  className="w-full py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-colors disabled:opacity-60"
+                >
+                  {t.delete_account_cancel}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -418,7 +509,9 @@ function WishlistTab({ t, lang, isRtl }) {
                 {(family || city) && (
                   <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
                     <MapPin size={10} className="shrink-0" />
-                    {[family, city].filter(Boolean).join(' · ')}
+                    <span>{city || family}</span>
+                    {family && city && <span className="opacity-40">·</span>}
+                    {family && city && <span>{family}</span>}
                   </p>
                 )}
                 <div className="flex items-center justify-between mt-auto pt-1">
@@ -536,7 +629,7 @@ export default function CustomerDashboard() {
 
         {/* ── Main content ── */}
         <main className="flex-1 min-w-0 pt-4">
-          {TAB_PARAM === 'profile'  && <ProfileTab  user={user} displayName={displayName} t={t} lang={lang} />}
+          {TAB_PARAM === 'profile'  && <ProfileTab  user={user} displayName={displayName} t={t} lang={lang} logout={logout} navigate={navigate} />}
           {TAB_PARAM === 'orders'   && <OrdersTab   t={t} lang={lang} isRtl={isRtl} user={user} />}
           {TAB_PARAM === 'wishlist' && <WishlistTab  t={t} lang={lang} isRtl={isRtl} />}
         </main>

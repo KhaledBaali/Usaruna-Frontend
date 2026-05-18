@@ -223,6 +223,29 @@ export default function FamilyRegisterPage() {
           },
         },
       });
+
+      // Detect duplicate email: either an error (email-confirm OFF) or identities:[] (email-confirm ON)
+      const emailTaken =
+        authError?.message?.includes('already registered') ||
+        (!authError && data?.user && data.user.identities?.length === 0);
+
+      if (emailTaken) {
+        // data.user.id is the real existing user's ID (when identities:[]).
+        // Query producer_profiles to determine account type — don't trust user_metadata
+        // because it contains what we just submitted, not the existing user's data.
+        let isProducer = false;
+        if (data?.user?.id) {
+          const { data: profile } = await supabase
+            .from('producer_profiles')
+            .select('id')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+          isProducer = !!profile;
+        }
+        setError(isProducer ? t('freg_errTakenProducer') : t('freg_errTakenCustomer'));
+        return;
+      }
+
       if (authError) throw authError;
 
       // ── Step 2: Insert producer profile row ──────────────────────────────────
@@ -263,11 +286,7 @@ export default function FamilyRegisterPage() {
         setSuccess(true);
       }
     } catch (err) {
-      if (err.message?.includes('already registered')) {
-        setError(t('freg_errTaken'));
-      } else {
-        setError(err.message || t('freg_errGeneric'));
-      }
+      setError(err.message || t('freg_errGeneric'));
     } finally {
       setIsLoading(false);
     }

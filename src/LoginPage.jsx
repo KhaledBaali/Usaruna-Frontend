@@ -62,6 +62,7 @@ const T = {
     errPhoneLen: 'رقم الجوال يجب أن يكون 9 أرقام (مثال: 512345678)',
     errCreds: 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
     errGeneric: 'حدث خطأ، يرجى المحاولة مرة أخرى',
+    errNotConfirmed: 'يرجى تأكيد بريدك الإلكتروني أولاً — تحقق من صندوق الوارد',
     langBtn: 'English',
   },
   en: {
@@ -115,6 +116,7 @@ const T = {
     errPhoneLen: 'Phone number must be 9 digits (e.g. 512345678)',
     errCreds: 'Invalid email or password',
     errGeneric: 'An error occurred, please try again',
+    errNotConfirmed: 'Please confirm your email first — check your inbox',
     langBtn: 'العربية',
   },
 };
@@ -256,7 +258,10 @@ export default function LoginPage() {
       setSuccess(true);
       navigate(role === 'producer' ? '/dashboard' : '/');
     } catch (err) {
-      setError(err.message === 'Invalid login credentials' ? t.errCreds : t.errGeneric);
+      const msg = err.message ?? '';
+      if (msg === 'Invalid login credentials') setError(t.errCreds);
+      else if (msg.toLowerCase().includes('email not confirmed')) setError(t.errNotConfirmed);
+      else setError(t.errGeneric);
     } finally {
       setIsLoading(false);
     }

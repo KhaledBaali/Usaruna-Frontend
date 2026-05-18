@@ -10,6 +10,7 @@ import FamilyRegisterPage from './FamilyRegisterPage';
 import ProductDetailsPage from './ProductDetailsPage';
 import CartPage from './CartPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
+import ResetPasswordPage from './ResetPasswordPage';
 import SellerDashboard from './SellerDashboard';
 import CheckoutPage from './CheckoutPage';
 import CustomerDashboard from './CustomerDashboard';
@@ -29,6 +30,7 @@ export default function App() {
                 <Route path="/register"        element={<UserRegisterPage />}   />
                 <Route path="/register-family" element={<FamilyRegisterPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password"  element={<ResetPasswordPage />}  />
                 <Route path="/dashboard"       element={<SellerDashboard />}    />
                 <Route path="/checkout"        element={<CheckoutPage />}       />
                 <Route path="/account"         element={<CustomerDashboard />}  />

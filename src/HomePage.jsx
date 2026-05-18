@@ -107,15 +107,21 @@ function ProductCard({ product, onAddToCart }) {
 
         <p className="text-xs text-blue-600 font-medium flex items-center gap-1">
           <MapPin size={11} className="shrink-0" />
-          {family ? `${family} · ${city}` : (city ?? '—')}
+          <span>{city || family || '—'}</span>
+          {family && city && <span className="opacity-40">·</span>}
+          {family && city && <span>{family}</span>}
         </p>
 
         <DeliveryTag isPerishable={product.isPerishable ?? product.is_perishable} />
 
-        <div className="flex items-center gap-1.5">
-          <StarRating rating={product.rating ?? 0} />
-          <span className="text-xs text-gray-400">({product.reviews ?? 0})</span>
-        </div>
+        {(product.reviews ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5">
+            <StarRating rating={product.rating ?? 0} />
+            <span className="text-xs text-gray-400 font-medium">
+              {Number(product.rating ?? 0).toFixed(1)} ({product.reviews})
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mt-auto pt-0.5">
           <span className="text-lg font-extrabold text-blue-900 leading-none">
@@ -190,6 +196,7 @@ export default function HomePage() {
   const [cities,       setCities]       = useState([]);
   const [dbCategories, setDbCategories] = useState([]);
   const [loadingMeta,  setLoadingMeta]  = useState(true);
+  const [showAbout,    setShowAbout]    = useState(false);
 
   useEffect(() => {
     const fetchMeta = async () => {
@@ -255,9 +262,11 @@ export default function HomePage() {
       activeCategory === 'all' || p.category === activeCategory;
 
     const perishable = products.filter(
-      (p) => p.isPerishable && p.sellerCity === currentCityAr && matchesSearch(p) && matchesCat(p),
+      (p) => p.deliveryTypes?.includes('seller_delivery') && p.sellerCity === currentCityAr && matchesSearch(p) && matchesCat(p),
     );
-    const nationwide = products.filter((p) => !p.isPerishable && matchesSearch(p) && matchesCat(p));
+    const nationwide = products.filter(
+      (p) => p.deliveryTypes?.includes('third_party') && matchesSearch(p) && matchesCat(p),
+    );
 
     return { perishableInCity: perishable, nationwideProducts: nationwide };
   }, [currentCityAr, products, activeCategory, searchQuery]);
@@ -510,12 +519,8 @@ export default function HomePage() {
       {/* ════════════════════ CATEGORIES ════════════════════ */}
       <section className="py-10 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between mb-5">
+          <div className="mb-5">
             <h2 className="text-xl font-extrabold text-gray-800">{t('section_browseCategories')}</h2>
-            <button className="text-blue-600 text-sm font-semibold flex items-center gap-1 hover:text-blue-800 transition-colors">
-              <ChevronBack size={15} />
-              {t('section_viewAll')}
-            </button>
           </div>
 
           {loadingMeta ? (
@@ -558,19 +563,13 @@ export default function HomePage() {
       <section className="py-14 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
 
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <h2 className="text-2xl font-extrabold text-gray-800">{t('section_featuredProducts')}</h2>
-              <p className="text-gray-500 text-sm mt-1">
-                {t('products_showing')}{' '}
-                <span className="font-bold text-blue-700">{totalVisible}</span>
-                {' '}{t('products_basedOnCity')} {currentCityDisplay}
-              </p>
-            </div>
-            <button className="text-blue-600 text-sm font-semibold flex items-center gap-1 hover:text-blue-800 transition-colors shrink-0">
-              <ChevronBack size={15} />
-              {t('section_viewAll')}
-            </button>
+          <div className="mb-10">
+            <h2 className="text-2xl font-extrabold text-gray-800">{t('section_featuredProducts')}</h2>
+            <p className="text-gray-500 text-sm mt-1">
+              {t('products_showing')}{' '}
+              <span className="font-bold text-blue-700">{totalVisible}</span>
+              {' '}{t('products_basedOnCity')} {currentCityDisplay}
+            </p>
           </div>
 
           {/* Group 1: Perishable */}
@@ -695,12 +694,8 @@ export default function HomePage() {
             <div>
               <h4 className="font-bold text-sm mb-5">{t('footer_quickLinks')}</h4>
               <ul className="space-y-3">
-                {[
-                  t('footer_home'), t('footer_products'),
-                  t('footer_families'), t('footer_blog'), t('footer_about'),
-                ].map((link) => (
-                  <li key={link}><a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a></li>
-                ))}
+                <li><Link to="/" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_home')}</Link></li>
+                <li><button onClick={() => setShowAbout(true)} className="text-blue-300 hover:text-emerald-400 text-sm transition-colors text-start">{t('footer_about')}</button></li>
               </ul>
             </div>
 
@@ -708,18 +703,8 @@ export default function HomePage() {
             <div>
               <h4 className="font-bold text-sm mb-5">{t('footer_forFamilies')}</h4>
               <ul className="space-y-3">
-                {[
-                  t('footer_registerFam'), t('footer_dashboard'),
-                  t('footer_terms'), t('footer_support'), t('footer_faq'),
-                ].map((link, i) => (
-                  <li key={link}>
-                    {i === 0 ? (
-                      <Link to="/login" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</Link>
-                    ) : (
-                      <a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a>
-                    )}
-                  </li>
-                ))}
+                <li><Link to="/register-family" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_registerFam')}</Link></li>
+                <li><Link to="/dashboard" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_dashboard')}</Link></li>
               </ul>
             </div>
 
@@ -750,6 +735,47 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      {/* About Usaruna modal */}
+      {showAbout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAbout(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowAbout(false)} className="absolute top-4 end-4 text-gray-400 hover:text-gray-600 transition-colors">
+              <X size={22} />
+            </button>
+            <div className="flex items-center gap-3 mb-5">
+              <img src={logo} alt={t('brand_name')} className="w-10 h-10" />
+              <h2 className="text-xl font-extrabold font-brand text-gray-900">{t('brand_name')}</h2>
+            </div>
+            <p className="text-gray-700 text-sm leading-relaxed mb-4">
+              {lang === 'ar'
+                ? 'اسرنا منصة سعودية تربط المتسوقين بالأسر المنتجة المحلية في جميع أنحاء المملكة. نؤمن بأن أفضل المنتجات تُصنع بحب في البيوت السعودية.'
+                : 'Usaruna is a Saudi platform connecting shoppers with local family producers across the Kingdom. We believe the best products are made with love in Saudi homes.'}
+            </p>
+            <ul className="space-y-2.5 text-sm text-gray-600">
+              {(lang === 'ar' ? [
+                '🏠 منتجات منزلية أصيلة من أسر سعودية',
+                '🛵 توصيل محلي سريع أو شحن لجميع المدن',
+                '✅ جودة مضمونة وتقييمات حقيقية',
+                '💚 دعم مباشر للمشاريع العائلية الصغيرة',
+              ] : [
+                '🏠 Authentic homemade products from Saudi families',
+                '🛵 Fast local delivery or nationwide shipping',
+                '✅ Guaranteed quality with real customer reviews',
+                '💚 Direct support for small family businesses',
+              ]).map((item) => (
+                <li key={item} className="flex items-start gap-2">{item}</li>
+              ))}
+            </ul>
+            <div className="mt-6 pt-5 border-t border-gray-100 flex justify-end">
+              <Link to="/register-family" onClick={() => setShowAbout(false)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors">
+                {t('footer_registerFam')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,12 +23,22 @@ export async function enhanceDescription(description, lang = 'en') {
 }
 
 export async function getSmartReply({ product_name, product_description, product_details, customer_name, review_text }) {
-  const res = await fetch(`${AI_BASE}/smart-reply`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ product_name, product_description, product_details, customer_name, review_text }),
-  });
-  if (!res.ok) throw new Error('AI smart-reply failed');
-  const { suggested_reply } = await res.json();
-  return suggested_reply;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(`${AI_BASE}/smart-reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_name, product_description, product_details, customer_name, review_text }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(`AI smart-reply ${res.status}: ${JSON.stringify(body)}`);
+    }
+    const { suggested_reply } = await res.json();
+    return suggested_reply;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

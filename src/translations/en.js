@@ -18,8 +18,8 @@ export default {
   nav_hello:       'Hello,',
 
   // ─── Location bar ────────────────────────────────────────────────────────────
-  loc_freshAvailable:   'fresh dishes available now in',
-  loc_noFreshDishes:    'No fresh dishes in',
+  loc_freshAvailable:   'products available now in',
+  loc_noFreshDishes:    'No products in',
   loc_noFreshNow:       'right now',
 
   // ─── Hero ────────────────────────────────────────────────────────────────────
@@ -55,17 +55,17 @@ export default {
   section_viewAll:          'View All',
   products_showing:         'Showing',
   products_basedOnCity:     'products based on your location in',
-  group_freshIn:            'Fresh Dishes in',
-  group_freshSubtitle:      'Fast delivery within 1-2 hours',
+  group_freshIn:            'Products in',
+  group_freshSubtitle:      'Available in your city',
   group_nationwide:         'Products Delivered Anywhere',
   group_nationwideSubtitle: 'Ships to all Saudi cities · 24-48 hours',
 
   // ─── Empty state ─────────────────────────────────────────────────────────────
-  empty_noFreshIn:       'No fresh dishes in',
+  empty_noFreshIn:       'No products in',
   empty_noFreshNow:      'right now',
   empty_expanding:       "We're expanding our Usaruna network to your city. Try selecting",
   empty_or:              'or',
-  empty_seeFreshDishes:  'to see available fresh dishes.',
+  empty_seeFreshDishes:  'to see available products.',
 
   // ─── CTA banner ──────────────────────────────────────────────────────────────
   cta_title:    'Are You a Producing Family?',
@@ -78,19 +78,13 @@ export default {
   footer_forFamilies:   'For Producer Families',
   footer_contactUs:     'Contact Us',
   footer_home:          'Home',
-  footer_products:      'Products',
-  footer_families:      'Producer Families',
-  footer_blog:          'Blog',
   footer_about:         'About Usaruna',
   footer_registerFam:   'Register Your Family',
   footer_dashboard:     'Dashboard',
-  footer_terms:         'Terms & Conditions',
-  footer_support:       'Technical Support',
-  footer_faq:           'FAQ',
   footer_phone:         '+966 50 000 0000',
   footer_email:         'hello@usaruna.sa',
-  footer_address:       'Riyadh, Kingdom of Saudi Arabia',
-  footer_copyright:     '© 2025 Usaruna. All rights reserved.',
+  footer_address:       'Jeddah, Kingdom of Saudi Arabia',
+  footer_copyright:     '© 2026 Usaruna. All rights reserved.',
   footer_privacy:       'Privacy Policy',
   footer_usageTerms:    'Terms of Use',
 
@@ -246,7 +240,9 @@ export default {
   ureg_errPhone:     'Phone number must start with 05 and be 10 digits',
   ureg_errPw:        'Password must be at least 8 characters',
   ureg_errPwMatch:   'Passwords do not match',
-  ureg_errTaken:     'This email is already registered, please sign in',
+  ureg_errTaken:         'This email is already registered, please sign in',
+  ureg_errTakenCustomer: 'This email is already registered as a shopper account — please sign in',
+  ureg_errTakenProducer: 'This email is registered as a family producer account — please use a different email or sign in',
   ureg_errGeneric:   'An error occurred while creating account, please try again',
 
   // ─── Family Register Page ─────────────────────────────────────────────────────
@@ -307,7 +303,9 @@ export default {
   freg_errCat:       'Please select a specialty',
   freg_errPw:        'Password must be at least 8 characters',
   freg_errPwMatch:   'Passwords do not match',
-  freg_errTaken:     'This email is already registered, please sign in',
+  freg_errTaken:         'This email is already registered, please sign in',
+  freg_errTakenProducer: 'This email is already registered as a family producer account — please sign in',
+  freg_errTakenCustomer: 'This email is registered as a shopper account — please use a different email or sign in',
   freg_errGeneric:   'An error occurred during registration, please try again',
 
   // ─── Cart Page ────────────────────────────────────────────────────────────────

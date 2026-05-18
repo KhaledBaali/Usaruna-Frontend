@@ -138,20 +138,37 @@ export default function UserRegisterPage() {
         password: form.password,
         options: { data: { full_name: form.fullName.trim(), phone: form.phone.trim() || null, role: 'customer' } },
       });
+
+      // Detect duplicate email: either an error (email-confirm OFF) or identities:[] (email-confirm ON)
+      const emailTaken =
+        authError?.message?.includes('already registered') ||
+        (!authError && data?.user && data.user.identities?.length === 0);
+
+      if (emailTaken) {
+        // data.user.id is the real existing user's ID (when identities:[]).
+        // Query producer_profiles to determine account type — don't trust user_metadata
+        // because it contains what we just submitted, not the existing user's data.
+        let isProducer = false;
+        if (data?.user?.id) {
+          const { data: profile } = await supabase
+            .from('producer_profiles')
+            .select('id')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+          isProducer = !!profile;
+        }
+        setError(isProducer ? t('ureg_errTakenProducer') : t('ureg_errTakenCustomer'));
+        return;
+      }
+
       if (authError) throw authError;
 
-      if (data.session) {
-        // Auto-confirm enabled — session is live immediately.
-        // CartContext will detect user → userId transition and sync the guest cart automatically.
-        setSuccess(true);
-        setTimeout(() => navigate('/'), 1200);
-      } else {
-        // Email confirmation required — show the "check your email" screen.
-        // Cart sync will happen after the user clicks the confirmation link and logs in.
-        setSuccess(true);
-      }
+      // Always sign out immediately — user must verify their email before logging in.
+      if (data.session) await supabase.auth.signOut();
+
+      setSuccess(true);
     } catch (err) {
-      setError(err.message?.includes('already registered') ? t('ureg_errTaken') : t('ureg_errGeneric'));
+      setError(t('ureg_errGeneric'));
     } finally {
       setIsLoading(false);
     }

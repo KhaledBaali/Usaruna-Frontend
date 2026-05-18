@@ -110,7 +110,10 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty, onUpdateMeta })
           {name}
         </Link>
         <p className="text-xs text-blue-600 font-medium flex items-center gap-1 mb-2">
-          <MapPin size={11} className="shrink-0" />{family} · {city}
+          <MapPin size={11} className="shrink-0" />
+          <span>{city || family || '—'}</span>
+          {family && city && <span className="opacity-40">·</span>}
+          {family && city && <span>{family}</span>}
         </p>
 
         {/* No delivery chosen yet: show selector */}

@@ -5,15 +5,15 @@ import {
   ChevronRight, ChevronLeft, Minus, Plus, Share2,
   Shield, Truck, Award, Phone, ThumbsUp, CheckCircle,
   Globe, AtSign, Mail, Filter, XCircle, RotateCcw, User,
-  Wand2, Copy, Check, Loader2, Zap, MessageCircle, Trash2, Store, AlertCircle,
+  Wand2, Check, Loader2, Zap, MessageCircle, Trash2, Store, AlertCircle, X,
 } from 'lucide-react';
 import LocationPicker from './LocationPicker';
 import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
 import { useWishlist } from './contexts/WishlistContext';
-import { fetchProductById, fetchReviews, submitReview, deleteReview, replyToReview, deleteReviewReply } from './lib/api';
-import { summarizeReviews, getSmartReply, enhanceDescription } from './lib/aiApi';
+import { fetchProductById, fetchReviews, submitReview, deleteReview, replyToReview, deleteReviewReply, updateHelpfulCount, fetchQuestions, submitQuestion, deleteQuestion, answerQuestion, deleteQuestionAnswer, updateQuestionHelpful } from './lib/api';
+import { summarizeReviews, getSmartReply } from './lib/aiApi';
 import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
 
@@ -76,6 +76,7 @@ export default function ProductDetailsPage() {
 
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch from Supabase
@@ -89,7 +90,8 @@ export default function ProductDetailsPage() {
           if (data.deliveryTypes?.length) setDeliveryOption(data.deliveryTypes[0]);
         }
       }),
-      fetchReviews(Number(id)).then((data) => { if (data?.length) setReviews(data); })
+      fetchReviews(Number(id)).then((data) => { if (data?.length) setReviews(data); }),
+      fetchQuestions(Number(id)).then((data) => { if (data?.length) setQuestions(data); }),
     ]).finally(() => setLoading(false));
   }, [id]);
 
@@ -120,19 +122,20 @@ export default function ProductDetailsPage() {
   // Helper: pick Arabic or English value
   const px = (ar, en) => (lang === 'ar' ? ar : (en || ar));
 
-  // Size/color defaults — must run before hooks
-  const defaultSize  = product?.sizes?.find((s) => s.priceAdj === 0)?.id ?? product?.sizes?.[0]?.id ?? null;
-  const defaultColor = product?.colors?.[0]?.id ?? null;
-
   const [selectedImage,  setSelectedImage]  = useState(0);
   const [quantity,       setQuantity]       = useState(1);
   const [added,          setAdded]          = useState(false);
   const [deliveryOption, setDeliveryOption] = useState(null);
-  const [selectedSize,   setSelectedSize]   = useState(defaultSize);
-  const [selectedColor,  setSelectedColor]  = useState(defaultColor);
+  const [selectedSize,   setSelectedSize]   = useState(null);
+  const [selectedColor,  setSelectedColor]  = useState(null);
   const [starFilter,     setStarFilter]     = useState(0);
   const [sortBy,         setSortBy]         = useState('recent');
-  const [helpfulVoted,   setHelpfulVoted]   = useState(new Set());
+  const [helpfulVoted,   setHelpfulVoted]   = useState(() => {
+    try {
+      const stored = localStorage.getItem('usaruna_helpful_voted');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
   const [reviewRating,   setReviewRating]   = useState(5);
   const [reviewHover,    setReviewHover]    = useState(0);
   const [reviewText,     setReviewText]     = useState('');
@@ -141,31 +144,73 @@ export default function ProductDetailsPage() {
   // AI state
   const [aiSummary,         setAiSummary]         = useState(null);
   const [aiSummaryLoading,  setAiSummaryLoading]  = useState(false);
-  const [smartReplies,      setSmartReplies]      = useState({});
   const [smartReplyLoading, setSmartReplyLoading] = useState({});
-  const [copiedReply,       setCopiedReply]       = useState(null);
 
-  // Translate state
+  // Translate state (review comments)
   const [translatedComments,  setTranslatedComments]  = useState({});
   const [translatingComments, setTranslatingComments] = useState({});
 
   // Seller reply state
-  const [replyDrafts,     setReplyDrafts]     = useState({});
-  const [replyEditorOpen, setReplyEditorOpen] = useState(new Set());
-  const [replySubmitting, setReplySubmitting] = useState({});
+  const [replyDrafts,       setReplyDrafts]       = useState({});
+  const [replyTranslations, setReplyTranslations] = useState({});
+  const [translatingReply,  setTranslatingReply]  = useState({});
+  const [replyEditorOpen,   setReplyEditorOpen]   = useState(new Set());
+  const [replySubmitting,   setReplySubmitting]   = useState({});
 
-  // Enhanced description (AR + EN separately)
-  const [enhancedDescAr,  setEnhancedDescAr]  = useState(null);
-  const [enhancedDescEn,  setEnhancedDescEn]  = useState(null);
-  const [enhancingAr,     setEnhancingAr]     = useState(false);
-  const [enhancingEn,     setEnhancingEn]     = useState(false);
+  // Questions state
+  const [questionText,          setQuestionText]          = useState('');
+  const [questionHelpfulVoted,  setQuestionHelpfulVoted]  = useState(() => {
+    try {
+      const stored = localStorage.getItem('usaruna_qhelpful_voted');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [questionSortBy,        setQuestionSortBy]        = useState('recent');
+  const [translatedQuestions,   setTranslatedQuestions]   = useState({});
+  const [translatingQuestions,  setTranslatingQuestions]  = useState({});
+  const [answerDrafts,          setAnswerDrafts]          = useState({});
+  const [answerTranslations,    setAnswerTranslations]    = useState({});
+  const [translatingAnswer,     setTranslatingAnswer]     = useState({});
+  const [answerEditorOpen,      setAnswerEditorOpen]      = useState(new Set());
+  const [answerSubmitting,      setAnswerSubmitting]      = useState({});
+  const [smartAnswerLoading,    setSmartAnswerLoading]    = useState({});
+
   const [customerLocation, setCustomerLocation] = useState(null);
+  const [showAbout,        setShowAbout]        = useState(false);
 
-  const sellerEta = product?.prepTime
-    ? (lang === 'ar'
-        ? `يُوصَّل بعد ${product.prepTime} دقيقة تحضير`
-        : `Delivered after ${product.prepTime} min prep`)
-    : null;
+  const prepTimeLabel = (() => {
+    const m = product?.prepTime;
+    if (!m) return null;
+    if (m % (60 * 24) === 0) {
+      const d = m / (60 * 24);
+      return lang === 'ar' ? `${d} ${d === 1 ? 'يوم' : 'أيام'}` : `${d} day${d !== 1 ? 's' : ''}`;
+    }
+    if (m % 60 === 0) {
+      const h = m / 60;
+      return lang === 'ar' ? `${h} ${h === 1 ? 'ساعة' : 'ساعات'}` : `${h} hour${h !== 1 ? 's' : ''}`;
+    }
+    return lang === 'ar' ? `${m} ${m === 1 ? 'دقيقة' : 'دقائق'}` : `${m} minute${m !== 1 ? 's' : ''}`;
+  })();
+
+  const sellerEta = (() => {
+    const m = product?.prepTime;
+    if (!m) return null;
+    if (m % (60 * 24) === 0) {
+      const d = m / (60 * 24);
+      return lang === 'ar'
+        ? `يُوصَّل بعد ${d} ${d === 1 ? 'يوم' : 'أيام'} تحضير`
+        : `Delivered after ${d} day${d !== 1 ? 's' : ''} prep`;
+    }
+    if (m % 60 === 0) {
+      const h = m / 60;
+      return lang === 'ar'
+        ? `يُوصَّل بعد ${h} ${h === 1 ? 'ساعة' : 'ساعات'} تحضير`
+        : `Delivered after ${h} hour${h !== 1 ? 's' : ''} prep`;
+    }
+    return lang === 'ar'
+      ? `يُوصَّل بعد ${m} ${m === 1 ? 'دقيقة' : 'دقائق'} تحضير`
+      : `Delivered after ${m} minute${m !== 1 ? 's' : ''} prep`;
+  })();
 
   const DELIVERY_OPTIONS = [
     { id: 'pickup',          emoji: '🏪', label: t('delivery_pickup_label'), desc: t('delivery_pickup_desc'), price: 0,  eta: t('delivery_pickup_eta')  },
@@ -241,7 +286,11 @@ export default function ProductDetailsPage() {
 
   const needsLocation = deliveryOption === 'seller_delivery' || deliveryOption === 'third_party';
   const locationConfirmed = !needsLocation || !!customerLocation?.lat;
-  const canAddToCart = stockLevel !== 'out' && deliveryOption && locationConfirmed;
+  const needsSize  = !!(product?.sizes?.length);
+  const needsColor = !!(product?.colors?.length);
+  const canAddToCart = stockLevel !== 'out' && deliveryOption && locationConfirmed
+    && (!needsSize  || selectedSize  !== null)
+    && (!needsColor || selectedColor !== null);
 
   const handleAddToCart = () => {
     if (!canAddToCart) {
@@ -278,12 +327,24 @@ export default function ProductDetailsPage() {
 
   const handleHelpful = (reviewId) => {
     const isVoted = helpfulVoted.has(reviewId);
+    const delta = isVoted ? -1 : 1;
+
     setHelpfulVoted((prev) => {
       const next = new Set(prev);
       if (isVoted) next.delete(reviewId);
       else next.add(reviewId);
+      try { localStorage.setItem('usaruna_helpful_voted', JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
+
+    // Optimistically update the count in local state
+    setReviews((prev) =>
+      prev.map((r) => r.id === reviewId ? { ...r, helpful: Math.max(0, r.helpful + delta) } : r)
+    );
+
+    // Persist to DB
+    updateHelpfulCount(reviewId, delta);
+
     if (!isVoted) showToast(t('toast_thankYou'), '👍');
   };
 
@@ -292,38 +353,42 @@ export default function ProductDetailsPage() {
     setSmartReplyLoading((prev) => ({ ...prev, [review.id]: true }));
     try {
       const reply = await getSmartReply({
-        product_name:        px(product.name, product.nameEn),
-        product_description: px(product.description, product.descriptionEn),
-        product_details:     `Price: ${product.price} SAR`,
-        customer_name:       lang === 'ar' ? review.author : (review.author_en || review.author),
-        review_text:         lang === 'ar' ? review.comment : (review.comment_en || review.comment),
+        product_name:        px(product.name, product.nameEn) || 'Product',
+        product_description: px(product.description, product.descriptionEn) || '-',
+        product_details:     `Price: ${product.price ?? 0} SAR`,
+        customer_name:       (lang === 'ar' ? review.author : (review.author_en || review.author)) || 'Customer',
+        review_text:         review.comment || '-',
       });
-      if (isSeller) {
-        // For sellers: populate the editable reply draft
+      if (reply) {
         setReplyDrafts((prev) => ({ ...prev, [review.id]: reply }));
         setReplyEditorOpen((prev) => new Set([...prev, review.id]));
-      } else {
-        setSmartReplies((prev) => ({ ...prev, [review.id]: reply }));
       }
-    } catch { /* silently fail */ } finally {
+    } catch (err) {
+      console.error('[AI reply]', err?.message);
+      showToast(
+        lang === 'ar' ? 'تعذّر الاتصال بخدمة الذكاء الاصطناعي' : 'Could not reach AI service',
+        '❌', 'info'
+      );
+    } finally {
       setSmartReplyLoading((prev) => ({ ...prev, [review.id]: false }));
     }
   };
 
-  const handleEnhanceAr = async () => {
-    const raw = product?.description;
-    if (!raw || enhancingAr) return;
-    setEnhancingAr(true);
-    try { setEnhancedDescAr(await enhanceDescription(raw)); }
-    catch { /* silently fail */ } finally { setEnhancingAr(false); }
-  };
-
-  const handleEnhanceEn = async () => {
-    const raw = product?.descriptionEn;
-    if (!raw || enhancingEn) return;
-    setEnhancingEn(true);
-    try { setEnhancedDescEn(await enhanceDescription(raw)); }
-    catch { /* silently fail */ } finally { setEnhancingEn(false); }
+  const handleTranslateReplyDraft = async (reviewId) => {
+    const text = (replyDrafts[reviewId] ?? '').trim();
+    if (!text) return;
+    const targetLang = lang === 'ar' ? 'en' : 'ar';
+    setTranslatingReply((prev) => ({ ...prev, [reviewId]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setReplyTranslations((prev) => ({ ...prev, [reviewId]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingReply((prev) => ({ ...prev, [reviewId]: false }));
+    }
   };
 
   const handleTranslate = async (review) => {
@@ -331,8 +396,8 @@ export default function ProductDetailsPage() {
       setTranslatedComments((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
       return;
     }
-    const text = review.lang === 'en' ? review.comment_en : review.comment;
-    const targetLang = lang === 'ar' ? 'ar' : 'en';
+    const text = review.comment; // always use the stored text
+    const targetLang = lang;     // translate TO the current UI language
     setTranslatingComments((prev) => ({ ...prev, [review.id]: true }));
     try {
       const res = await fetch(
@@ -346,45 +411,62 @@ export default function ProductDetailsPage() {
     }
   };
 
-  const handleCopyReply = (reviewId, text) => {
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setCopiedReply(reviewId);
-    setTimeout(() => setCopiedReply(null), 2000);
-  };
-
   const handleSubmitReview = async () => {
     if (!reviewText.trim()) return;
-    const ok = await submitReview({ productId: Number(id), rating: reviewRating, comment: reviewText });
+    if (!user) {
+      showToast(lang === 'ar' ? 'يجب تسجيل الدخول لإرسال تقييم' : 'Please log in to submit a review', '🔒', 'info');
+      return;
+    }
+    const { ok, error: reviewError } = await submitReview({
+      productId: Number(id),
+      rating:    reviewRating,
+      comment:   reviewText,
+    });
     if (ok) {
-      // Optimistic: reload reviews
       fetchReviews(Number(id)).then((data) => { if (data) setReviews(data); });
       setReviewText('');
       setReviewRating(5);
       showToast(t('toast_reviewSent'), '⭐', 'review');
+    } else {
+      console.error('[review submit error]', reviewError);
+      showToast(
+        reviewError === 'not_logged_in'
+          ? (lang === 'ar' ? 'يجب تسجيل الدخول لإرسال تقييم' : 'Please log in to submit a review')
+          : (lang === 'ar' ? `خطأ: ${reviewError}` : `Error: ${reviewError}`),
+        '❌', 'info'
+      );
     }
   };
 
   const handleDeleteReview = async (reviewId) => {
-    const ok = await deleteReview(reviewId);
+    const { ok } = await deleteReview(reviewId);
     if (ok) setReviews((prev) => prev.filter((r) => r.id !== reviewId));
   };
 
   const handleSubmitReply = async (reviewId) => {
-    const text = (replyDrafts[reviewId] ?? smartReplies[reviewId] ?? '').trim();
+    const text = (replyDrafts[reviewId] ?? '').trim();
     if (!text) return;
     setReplySubmitting((prev) => ({ ...prev, [reviewId]: true }));
-    const ok = await replyToReview(reviewId, text);
+    const translatedText = replyTranslations[reviewId] ?? null;
+    const ok = await replyToReview(reviewId, text, translatedText);
     if (ok) {
-      setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, seller_reply: text, seller_reply_at: new Date().toISOString() } : r));
+      setReviews((prev) => prev.map((r) =>
+        r.id === reviewId
+          ? { ...r, seller_reply: text, seller_reply_en: translatedText, seller_reply_at: new Date().toISOString() }
+          : r
+      ));
       setReplyEditorOpen((prev) => { const n = new Set(prev); n.delete(reviewId); return n; });
       setReplyDrafts((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
+      setReplyTranslations((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
     }
     setReplySubmitting((prev) => ({ ...prev, [reviewId]: false }));
   };
 
   const handleDeleteReply = async (reviewId) => {
     const ok = await deleteReviewReply(reviewId);
-    if (ok) setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, seller_reply: null, seller_reply_at: null } : r));
+    if (ok) setReviews((prev) => prev.map((r) =>
+      r.id === reviewId ? { ...r, seller_reply: null, seller_reply_en: null, seller_reply_at: null } : r
+    ));
   };
 
   const openReplyEditor = (reviewId, prefill = '') => {
@@ -395,6 +477,158 @@ export default function ProductDetailsPage() {
   const closeReplyEditor = (reviewId) => {
     setReplyEditorOpen((prev) => { const n = new Set(prev); n.delete(reviewId); return n; });
     setReplyDrafts((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
+  };
+
+  // ── Question Handlers ──────────────────────────────────────────────────────
+
+  const filteredQuestions = useMemo(() => {
+    const q = [...questions];
+    if (questionSortBy === 'helpful') q.sort((a, b) => b.helpful - a.helpful);
+    return q;
+  }, [questions, questionSortBy]);
+
+  const handleQuestionHelpful = (questionId) => {
+    const isVoted = questionHelpfulVoted.has(questionId);
+    const delta = isVoted ? -1 : 1;
+    setQuestionHelpfulVoted((prev) => {
+      const next = new Set(prev);
+      if (isVoted) next.delete(questionId);
+      else next.add(questionId);
+      try { localStorage.setItem('usaruna_qhelpful_voted', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+    setQuestions((prev) =>
+      prev.map((q) => q.id === questionId ? { ...q, helpful: Math.max(0, q.helpful + delta) } : q)
+    );
+    updateQuestionHelpful(questionId, delta);
+    if (!isVoted) showToast(t('toast_thankYou'), '👍');
+  };
+
+  const handleTranslateQuestion = async (question) => {
+    if (translatedQuestions[question.id]) {
+      setTranslatedQuestions((prev) => { const n = { ...prev }; delete n[question.id]; return n; });
+      return;
+    }
+    const targetLang = lang;
+    setTranslatingQuestions((prev) => ({ ...prev, [question.id]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(question.question)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setTranslatedQuestions((prev) => ({ ...prev, [question.id]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingQuestions((prev) => ({ ...prev, [question.id]: false }));
+    }
+  };
+
+  const handleSmartAnswer = async (question) => {
+    if (smartAnswerLoading[question.id]) return;
+    setSmartAnswerLoading((prev) => ({ ...prev, [question.id]: true }));
+    try {
+      const reply = await getSmartReply({
+        product_name:        px(product.name, product.nameEn) || 'Product',
+        product_description: px(product.description, product.descriptionEn) || '-',
+        product_details:     `Price: ${product.price ?? 0} SAR`,
+        customer_name:       question.author || 'Customer',
+        review_text:         question.question || '-',
+      });
+      if (reply) {
+        setAnswerDrafts((prev) => ({ ...prev, [question.id]: reply }));
+        setAnswerEditorOpen((prev) => new Set([...prev, question.id]));
+      }
+    } catch (err) {
+      console.error('[AI answer]', err?.message);
+      showToast(
+        lang === 'ar' ? 'تعذّر الاتصال بخدمة الذكاء الاصطناعي' : 'Could not reach AI service',
+        '❌', 'info'
+      );
+    } finally {
+      setSmartAnswerLoading((prev) => ({ ...prev, [question.id]: false }));
+    }
+  };
+
+  const handleTranslateAnswerDraft = async (questionId) => {
+    const text = (answerDrafts[questionId] ?? '').trim();
+    if (!text) return;
+    const targetLang = lang === 'ar' ? 'en' : 'ar';
+    setTranslatingAnswer((prev) => ({ ...prev, [questionId]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setAnswerTranslations((prev) => ({ ...prev, [questionId]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingAnswer((prev) => ({ ...prev, [questionId]: false }));
+    }
+  };
+
+  const handleSubmitAnswer = async (questionId) => {
+    const text = (answerDrafts[questionId] ?? '').trim();
+    if (!text) return;
+    setAnswerSubmitting((prev) => ({ ...prev, [questionId]: true }));
+    const translatedText = answerTranslations[questionId] ?? null;
+    const ok = await answerQuestion(questionId, text, translatedText);
+    if (ok) {
+      setQuestions((prev) => prev.map((q) =>
+        q.id === questionId
+          ? { ...q, seller_answer: text, seller_answer_en: translatedText, seller_answer_at: new Date().toISOString() }
+          : q
+      ));
+      setAnswerEditorOpen((prev) => { const n = new Set(prev); n.delete(questionId); return n; });
+      setAnswerDrafts((prev) => { const n = { ...prev }; delete n[questionId]; return n; });
+      setAnswerTranslations((prev) => { const n = { ...prev }; delete n[questionId]; return n; });
+    }
+    setAnswerSubmitting((prev) => ({ ...prev, [questionId]: false }));
+  };
+
+  const handleDeleteAnswer = async (questionId) => {
+    const ok = await deleteQuestionAnswer(questionId);
+    if (ok) setQuestions((prev) => prev.map((q) =>
+      q.id === questionId ? { ...q, seller_answer: null, seller_answer_en: null, seller_answer_at: null } : q
+    ));
+  };
+
+  const handleDeleteQuestion = async (questionId) => {
+    const { ok } = await deleteQuestion(questionId);
+    if (ok) setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+  };
+
+  const handleSubmitQuestion = async () => {
+    if (!questionText.trim()) return;
+    if (!user) {
+      showToast(lang === 'ar' ? 'يجب تسجيل الدخول لإرسال سؤال' : 'Please log in to submit a question', '🔒', 'info');
+      return;
+    }
+    const { ok, error: qError } = await submitQuestion({
+      productId: Number(id),
+      question:  questionText,
+    });
+    if (ok) {
+      fetchQuestions(Number(id)).then((data) => { if (data) setQuestions(data); });
+      setQuestionText('');
+      showToast(lang === 'ar' ? 'تم إرسال سؤالك بنجاح!' : 'Question submitted!', '❓', 'review');
+    } else {
+      showToast(
+        qError === 'not_logged_in'
+          ? (lang === 'ar' ? 'يجب تسجيل الدخول' : 'Please log in')
+          : (lang === 'ar' ? `خطأ: ${qError}` : `Error: ${qError}`),
+        '❌', 'info'
+      );
+    }
+  };
+
+  const openAnswerEditor = (questionId, prefill = '') => {
+    setAnswerDrafts((prev) => ({ ...prev, [questionId]: prefill }));
+    setAnswerEditorOpen((prev) => new Set([...prev, questionId]));
+  };
+
+  const closeAnswerEditor = (questionId) => {
+    setAnswerEditorOpen((prev) => { const n = new Set(prev); n.delete(questionId); return n; });
+    setAnswerDrafts((prev) => { const n = { ...prev }; delete n[questionId]; return n; });
   };
 
   // ── 404 / Loading ──────────────────────────────────────────────────────────
@@ -517,6 +751,14 @@ export default function ProductDetailsPage() {
               <button onClick={handleShare} className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-full p-2.5 shadow-md hover:scale-110 transition-transform z-10">
                 <Share2 size={16} className="text-gray-600" />
               </button>
+              {/* Rating pill on image */}
+              {reviews.length > 0 && (
+                <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-md z-10">
+                  <Star size={13} className="text-amber-400 fill-amber-400 shrink-0" />
+                  <span className="font-extrabold text-gray-800 text-sm leading-none">{avgRating}</span>
+                  <span className="text-gray-400 text-xs leading-none">({reviews.length})</span>
+                </div>
+              )}
             </div>
 
             {images.length > 1 && (
@@ -563,9 +805,9 @@ export default function ProductDetailsPage() {
               </h1>
               <div className="flex items-center gap-2 text-blue-600 font-semibold text-sm mb-3">
                 <MapPin size={14} className="shrink-0" />
-                <span>{px(product.family, product.familyEn)}</span>
-                <span className="text-gray-300">·</span>
                 <span>{px(product.sellerCity, product.sellerCityEn)}</span>
+                <span className="text-gray-300">·</span>
+                <span>{px(product.family, product.familyEn)}</span>
               </div>
 
               {certifications?.length > 0 && (
@@ -582,9 +824,9 @@ export default function ProductDetailsPage() {
             {/* Rating + delivery tag */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <StarRating rating={product.rating} size={16} />
-                <span className="font-bold text-gray-800 text-sm">{product.rating}</span>
-                <span className="text-gray-400 text-sm">({product.reviews} {t('pd_reviews')})</span>
+                <StarRating rating={Number(avgRating)} size={16} />
+                <span className="font-bold text-gray-800 text-sm">{avgRating}</span>
+                <span className="text-gray-400 text-sm">({reviews.length} {t('pd_reviews')})</span>
               </div>
               <DeliveryTag deliveryTypes={product.deliveryTypes} />
             </div>
@@ -629,14 +871,21 @@ export default function ProductDetailsPage() {
             {product.sizes?.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2.5">
-                  <h3 className="font-bold text-gray-800 text-sm">{t('pd_sizeLabel')}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-gray-800 text-sm">{t('pd_sizeLabel')}</h3>
+                    {!selectedSize && (
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                        {lang === 'ar' ? 'مطلوب' : 'Required'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-blue-600 font-semibold">{px(sizeObj?.label, sizeObj?.labelEn)}</span>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {product.sizes.map((size) => {
                     const isSelected = selectedSize === size.id;
                     return (
-                      <button key={size.id} onClick={() => setSelectedSize(size.id)}
+                      <button key={size.id} onClick={() => setSelectedSize(isSelected ? null : size.id)}
                         className={`px-4 py-2.5 rounded-xl text-sm font-bold border-2 transition-all duration-200
                           ${isSelected ? 'border-blue-900 bg-blue-900 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:text-blue-700'}`}
                       >
@@ -657,9 +906,16 @@ export default function ProductDetailsPage() {
             {product.colors?.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2.5">
-                  <h3 className="font-bold text-gray-800 text-sm">
-                    {product.isPerishable ? t('pd_flavorLabel') : t('pd_packagingLabel')}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-gray-800 text-sm">
+                      {product.isPerishable ? t('pd_flavorLabel') : t('pd_packagingLabel')}
+                    </h3>
+                    {!selectedColor && (
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                        {lang === 'ar' ? 'مطلوب' : 'Required'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-blue-600 font-semibold">
                     {px(product.colors.find((c) => c.id === selectedColor)?.label, product.colors.find((c) => c.id === selectedColor)?.labelEn)}
                   </span>
@@ -668,7 +924,7 @@ export default function ProductDetailsPage() {
                   {product.colors.map((color) => {
                     const isSelected = selectedColor === color.id;
                     return (
-                      <button key={color.id} onClick={() => setSelectedColor(color.id)}
+                      <button key={color.id} onClick={() => setSelectedColor(isSelected ? null : color.id)}
                         title={px(color.label, color.labelEn)}
                         className={`w-9 h-9 rounded-full transition-all duration-200 border-[3px] flex items-center justify-center
                           ${isSelected ? 'border-blue-900 scale-110 shadow-lg' : 'border-gray-200 hover:scale-105 hover:border-gray-400'}`}
@@ -688,50 +944,16 @@ export default function ProductDetailsPage() {
             {/* Description — Arabic */}
             {product.description && (
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-2.5">
-                  <h3 className="font-bold text-gray-800 text-sm">{lang === 'ar' ? 'عن المنتج' : 'About (Arabic)'}</h3>
-                  <div className="flex items-center gap-2">
-                    {enhancedDescAr && (
-                      <button onClick={() => setEnhancedDescAr(null)} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
-                        <RotateCcw size={10} /> {lang === 'ar' ? 'الأصلي' : 'Original'}
-                      </button>
-                    )}
-                    <button onClick={handleEnhanceAr} disabled={enhancingAr}
-                      className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50">
-                      {enhancingAr ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري التحسين...' : 'Enhancing...'}</>
-                        : <><Wand2 size={11} />{lang === 'ar' ? 'تحسين ع' : 'Enhance AR'}</>}
-                    </button>
-                  </div>
-                </div>
-                {enhancedDescAr
-                  ? <div><p className="text-gray-600 text-sm leading-relaxed" dir="rtl">{enhancedDescAr}</p><span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 mt-2"><Wand2 size={9} /> AI</span></div>
-                  : <p className="text-gray-600 text-sm leading-relaxed" dir="rtl">{product.description}</p>
-                }
+                <h3 className="font-bold text-gray-800 text-sm mb-2.5">{lang === 'ar' ? 'عن المنتج' : 'About (Arabic)'}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed" dir="rtl">{product.description}</p>
               </div>
             )}
 
             {/* Description — English */}
             {product.descriptionEn && (
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-2.5">
-                  <h3 className="font-bold text-gray-800 text-sm">{lang === 'ar' ? 'عن المنتج (إنجليزي)' : 'About Product'}</h3>
-                  <div className="flex items-center gap-2">
-                    {enhancedDescEn && (
-                      <button onClick={() => setEnhancedDescEn(null)} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
-                        <RotateCcw size={10} /> {lang === 'ar' ? 'الأصلي' : 'Original'}
-                      </button>
-                    )}
-                    <button onClick={handleEnhanceEn} disabled={enhancingEn}
-                      className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50">
-                      {enhancingEn ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري التحسين...' : 'Enhancing...'}</>
-                        : <><Wand2 size={11} />{lang === 'ar' ? 'تحسين EN' : 'Enhance EN'}</>}
-                    </button>
-                  </div>
-                </div>
-                {enhancedDescEn
-                  ? <div><p className="text-gray-600 text-sm leading-relaxed" dir="ltr">{enhancedDescEn}</p><span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 mt-2"><Wand2 size={9} /> AI</span></div>
-                  : <p className="text-gray-600 text-sm leading-relaxed" dir="ltr">{product.descriptionEn}</p>
-                }
+                <h3 className="font-bold text-gray-800 text-sm mb-2.5">{lang === 'ar' ? 'عن المنتج (إنجليزي)' : 'About Product'}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed" dir="ltr">{product.descriptionEn}</p>
               </div>
             )}
 
@@ -758,6 +980,16 @@ export default function ProductDetailsPage() {
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockLevel === 'ok' ? 'bg-emerald-500' : stockLevel === 'out' ? 'bg-red-500' : 'bg-amber-500'}`} />
               {stockInfo.label}
             </span>
+
+            {/* Prep time */}
+            {prepTimeLabel && (
+              <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                <Clock size={15} className="text-amber-600 shrink-0" />
+                <p className="text-xs font-semibold text-amber-800">
+                  {lang === 'ar' ? `وقت التحضير: ${prepTimeLabel}` : `Prep time: ${prepTimeLabel}`}
+                </p>
+              </div>
+            )}
 
             {/* Delivery options */}
             <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
@@ -889,13 +1121,17 @@ export default function ProductDetailsPage() {
                   <ShoppingCart size={15} />
                   {stockLevel === 'out'
                     ? t('btn_outOfStock')
-                    : !deliveryOption
-                      ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
-                      : needsLocation && !locationConfirmed
-                        ? (lang === 'ar' ? 'أكد موقعك أولاً' : 'Confirm Location First')
-                        : added
-                          ? t('btn_addedToCart')
-                          : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
+                    : needsSize && !selectedSize
+                      ? (lang === 'ar' ? 'اختر الحجم أولاً' : 'Select Size First')
+                      : needsColor && !selectedColor
+                        ? (lang === 'ar' ? 'اختر الخيار أولاً' : 'Select Option First')
+                        : !deliveryOption
+                          ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
+                          : needsLocation && !locationConfirmed
+                            ? (lang === 'ar' ? 'أكد موقعك أولاً' : 'Confirm Location First')
+                            : added
+                              ? t('btn_addedToCart')
+                              : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
                 </button>
               </div>
             </div>
@@ -957,14 +1193,14 @@ export default function ProductDetailsPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 font-extrabold text-gray-900 text-base">
                 <MapPin size={13} className="text-blue-400 shrink-0" />
-                {px(product.family, product.familyEn)}
+                <span>{px(product.sellerCity, product.sellerCityEn)}</span>
                 <span className="text-gray-300 font-normal">·</span>
-                <span className="text-gray-500 font-semibold text-sm">{px(product.sellerCity, product.sellerCityEn)}</span>
+                <span className="text-gray-500 font-semibold text-sm">{px(product.family, product.familyEn)}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3 mt-2">
                 <div className="flex items-center gap-1.5">
                   <StarRating rating={product.rating} size={12} />
-                  <span className="text-xs text-gray-500">{product.rating} ({product.reviews} {t('pd_reviews')})</span>
+                  <span className="text-xs text-gray-500">{avgRating} ({reviews.length} {t('pd_reviews')})</span>
                 </div>
                 {product.partnerSince && (
                   <span className="text-xs text-gray-400 flex items-center gap-1">
@@ -1015,17 +1251,7 @@ export default function ProductDetailsPage() {
             </div>
           </div>
 
-          {/* AI Review Summary — button only for < 10 reviews; ≥ 10 auto-generates */}
-          {!aiSummary && !aiSummaryLoading && reviews.length > 0 && reviews.length < 10 && (
-            <button
-              onClick={handleSummarize}
-              className="mb-5 w-full flex items-center gap-2.5 p-3.5 bg-violet-50 hover:bg-violet-100 border border-violet-100 rounded-2xl transition-colors text-sm font-semibold text-violet-600"
-            >
-              <Wand2 size={15} className="shrink-0" />
-              {t('ai_summary_title')}
-              <span className="font-normal text-violet-400 text-xs ms-auto">{lang === 'ar' ? 'اضغط للتوليد' : 'Click to generate'}</span>
-            </button>
-          )}
+          {/* AI Review Summary — only appears when reviews reach 10+ */}
           {(aiSummaryLoading || aiSummary) && (
             <div className="mb-5 p-4 bg-gradient-to-r from-violet-50 to-blue-50 border border-violet-100 rounded-2xl flex gap-3 items-start">
               <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
@@ -1100,11 +1326,8 @@ export default function ProductDetailsPage() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm text-gray-800">
-                          {review.lang === 'en' ? review.author_en : review.author}
+                          {lang === 'ar' ? review.author : review.author_en}
                         </span>
-                        {review.lang === 'en' && (
-                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">EN</span>
-                        )}
                         {review.verified && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
                             <CheckCircle size={9} />{t('pd_verifiedBuyer')}
@@ -1121,7 +1344,7 @@ export default function ProductDetailsPage() {
                   </div>
                 </div>
                 <p className="text-sm text-gray-700 leading-relaxed mb-1" dir={review.lang === 'en' ? 'ltr' : 'rtl'}>
-                  {review.lang === 'en' ? review.comment_en : review.comment}
+                  {review.comment}
                 </p>
                 {translatedComments[review.id] && (
                   <div className="mt-1.5 mb-2 pt-2 border-t border-gray-100">
@@ -1138,34 +1361,24 @@ export default function ProductDetailsPage() {
                     className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${helpfulVoted.has(review.id) ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500'}`}
                   >
                     <ThumbsUp size={12} className={helpfulVoted.has(review.id) ? 'fill-blue-600' : ''} />
-                    {t('pd_helpful')} ({review.helpful + (helpfulVoted.has(review.id) ? 1 : 0)})
+                    {t('pd_helpful')} ({review.helpful})
                   </button>
-                  <button
-                    onClick={() => handleTranslate(review)}
-                    disabled={translatingComments[review.id]}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
-                  >
-                    {translatingComments[review.id]
-                      ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
-                      : translatedComments[review.id]
-                        ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
-                        : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
-                    }
-                  </button>
-                  {/* Non-seller visitors: public AI reply button */}
-                  {!isSeller && (
+                  {/* Translate: only show when review lang differs from UI lang */}
+                  {review.lang !== lang && (
                     <button
-                      onClick={() => handleSmartReply(review)}
-                      disabled={!!smartReplies[review.id] || smartReplyLoading[review.id]}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-violet-500 hover:text-violet-700 transition-colors disabled:opacity-50 disabled:cursor-default"
+                      onClick={() => handleTranslate(review)}
+                      disabled={translatingComments[review.id]}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
                     >
-                      {smartReplyLoading[review.id]
-                        ? <><Loader2 size={12} className="animate-spin" />{t('ai_smartReply_loading')}</>
-                        : <><Wand2 size={12} />{t('ai_smartReply')}</>
+                      {translatingComments[review.id]
+                        ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                        : translatedComments[review.id]
+                          ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                          : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
                       }
                     </button>
                   )}
-                  {/* Seller: reply button */}
+                  {/* Seller: reply button (only when no existing reply and editor closed) */}
                   {isSeller && !review.seller_reply && !replyEditorOpen.has(review.id) && (
                     <button onClick={() => openReplyEditor(review.id)}
                       className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
@@ -1181,50 +1394,54 @@ export default function ProductDetailsPage() {
                   )}
                 </div>
 
-                {/* Non-seller AI reply display */}
-                {!isSeller && smartReplies[review.id] && (
-                  <div className="mt-3 p-3 bg-violet-50 border border-violet-100 rounded-xl text-xs text-gray-700 leading-relaxed">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-violet-500 uppercase tracking-wide">{t('ai_smartReply')}</span>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => { setSmartReplies((prev) => { const n = { ...prev }; delete n[review.id]; return n; }); setTimeout(() => handleSmartReply(review), 0); }}
-                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors">
-                          <RotateCcw size={10} />{lang === 'ar' ? 'إعادة' : 'Redo'}
-                        </button>
-                        <button onClick={() => handleCopyReply(review.id, smartReplies[review.id])}
-                          className="flex items-center gap-1 text-[10px] font-bold text-violet-400 hover:text-violet-700 transition-colors">
-                          {copiedReply === review.id ? <><Check size={10} />{t('ai_smartReply_copied')}</> : <><Copy size={10} />{t('ai_smartReply_copy')}</>}
-                        </button>
-                      </div>
-                    </div>
-                    {smartReplies[review.id]}
-                  </div>
-                )}
-
                 {/* Seller reply editor */}
                 {isSeller && replyEditorOpen.has(review.id) && (
                   <div className="mt-3 space-y-2">
                     <textarea
                       value={replyDrafts[review.id] ?? ''}
-                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
+                      onChange={(e) => {
+                        setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }));
+                        setReplyTranslations((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
+                      }}
                       rows={3}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
                       placeholder={lang === 'ar' ? 'اكتب ردك هنا...' : 'Write your reply here...'}
                     />
+                    {/* Translation preview */}
+                    {replyTranslations[review.id] && (
+                      <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl">
+                        <span className="text-[10px] font-bold text-sky-600 block mb-1">
+                          {lang === 'ar' ? 'الترجمة (EN) — ستُحفظ وتُعرض للمتصفحين بالإنجليزية' : 'Translation (AR) — saved and shown to Arabic viewers'}
+                        </span>
+                        <p className="text-xs text-gray-700 leading-relaxed">{replyTranslations[review.id]}</p>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* AI suggest */}
                       <button onClick={() => handleSmartReply(review)} disabled={smartReplyLoading[review.id]}
                         className="flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
                         {smartReplyLoading[review.id]
-                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Generating...'}</>
-                          : <><Wand2 size={11} />{lang === 'ar' ? 'رد ذكي' : 'AI Reply'}</>}
+                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري توليد الرد...' : 'Generating...'}</>
+                          : <><Wand2 size={11} />{lang === 'ar' ? 'اقتراح رد بالذكاء الاصطناعي' : 'AI Suggest'}</>}
                       </button>
+                      {/* Translate draft to other language */}
+                      <button
+                        onClick={() => handleTranslateReplyDraft(review.id)}
+                        disabled={translatingReply[review.id] || !(replyDrafts[review.id] ?? '').trim()}
+                        className="flex items-center gap-1.5 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+                      >
+                        {translatingReply[review.id]
+                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Translating...'}</>
+                          : <><Globe size={11} />{lang === 'ar' ? 'ترجمة إلى EN' : 'Translate to AR'}</>}
+                      </button>
+                      {/* Post reply */}
                       <button onClick={() => handleSubmitReply(review.id)}
                         disabled={replySubmitting[review.id] || !(replyDrafts[review.id] ?? '').trim()}
                         className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
                         {replySubmitting[review.id] && <Loader2 size={11} className="animate-spin" />}
                         {lang === 'ar' ? 'نشر الرد' : 'Post Reply'}
                       </button>
-                      <button onClick={() => closeReplyEditor(review.id)}
+                      <button onClick={() => { closeReplyEditor(review.id); setReplyTranslations((prev) => { const n={...prev}; delete n[review.id]; return n; }); }}
                         className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-xl transition-colors">
                         {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                       </button>
@@ -1232,29 +1449,34 @@ export default function ProductDetailsPage() {
                   </div>
                 )}
 
-                {/* Seller reply display */}
-                {review.seller_reply && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-blue-700 flex items-center gap-1">
-                        <Store size={10} />{lang === 'ar' ? 'رد البائع' : "Seller's Reply"}
-                      </span>
-                      {isSeller && (
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => openReplyEditor(review.id, review.seller_reply)}
-                            className="text-[10px] font-bold text-blue-400 hover:text-blue-700 transition-colors">
-                            {lang === 'ar' ? 'تعديل' : 'Edit'}
-                          </button>
-                          <button onClick={() => handleDeleteReply(review.id)}
-                            className="text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors">
-                            {lang === 'ar' ? 'حذف الرد' : 'Delete reply'}
-                          </button>
-                        </div>
-                      )}
+                {/* Seller reply display — shows the right language version */}
+                {(review.seller_reply || review.seller_reply_en) && (() => {
+                  const displayReply = lang === 'ar'
+                    ? (review.seller_reply || review.seller_reply_en)
+                    : (review.seller_reply_en || review.seller_reply);
+                  return (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-blue-700 flex items-center gap-1">
+                          <Store size={10} />{lang === 'ar' ? 'رد البائع' : "Seller's Reply"}
+                        </span>
+                        {isSeller && (
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => openReplyEditor(review.id, review.seller_reply || '')}
+                              className="text-[10px] font-bold text-blue-400 hover:text-blue-700 transition-colors">
+                              {lang === 'ar' ? 'تعديل' : 'Edit'}
+                            </button>
+                            <button onClick={() => handleDeleteReply(review.id)}
+                              className="text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors">
+                              {lang === 'ar' ? 'حذف الرد' : 'Delete reply'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-700 leading-relaxed">{displayReply}</p>
                     </div>
-                    <p className="text-xs text-gray-700 leading-relaxed">{review.seller_reply}</p>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -1262,26 +1484,251 @@ export default function ProductDetailsPage() {
           {/* Write a review */}
           <div className="border-t border-gray-100 pt-6">
             <h3 className="font-bold text-gray-800 mb-4 text-sm">{t('pd_writeReview')}</h3>
-            <div className="flex gap-1 mb-4">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} onMouseEnter={() => setReviewHover(n)} onMouseLeave={() => setReviewHover(0)} onClick={() => setReviewRating(n)}>
-                  <Star size={26} className={`transition-colors duration-100 ${n <= (reviewHover || reviewRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-100'}`} />
+            {!user ? (
+              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-sm text-amber-800">
+                <span className="text-lg">🔒</span>
+                <span className="font-semibold">
+                  {lang === 'ar' ? 'يجب ' : 'You need to '}
+                  <Link to="/login" className="underline font-bold hover:text-amber-900">
+                    {lang === 'ar' ? 'تسجيل الدخول' : 'log in'}
+                  </Link>
+                  {lang === 'ar' ? ' لكتابة تقييم' : ' to write a review'}
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-1 mb-4">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} onMouseEnter={() => setReviewHover(n)} onMouseLeave={() => setReviewHover(0)} onClick={() => setReviewRating(n)}>
+                      <Star size={26} className={`transition-colors duration-100 ${n <= (reviewHover || reviewRating) ? 'text-amber-400 fill-amber-400' : 'text-gray-200 fill-gray-100'}`} />
+                    </button>
+                  ))}
+                  <span className="text-xs text-gray-400 self-center ms-2">{reviewHover || reviewRating} {t('pd_outOf5')}</span>
+                </div>
+                <textarea
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  placeholder={t('pd_reviewPlaceholder')}
+                  rows={4}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all placeholder-gray-400"
+                />
+                <button onClick={handleSubmitReview} disabled={!reviewText.trim()}
+                  className="mt-3 bg-blue-900 hover:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold px-7 py-2.5 rounded-2xl text-sm transition-colors"
+                >
+                  {t('pd_submitReview')}
                 </button>
-              ))}
-              <span className="text-xs text-gray-400 self-center mr-2">{reviewHover || reviewRating} {t('pd_outOf5')}</span>
+              </>
+            )}
+          </div>
+        </section>
+
+        {/* ════════ QUESTIONS ════════ */}
+        <section className="mt-6 bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+          <h2 className="font-extrabold text-gray-800 mb-6 text-base flex items-center gap-2">
+            <span className="w-1 h-5 bg-sky-400 rounded-full" />
+            {lang === 'ar' ? 'الأسئلة والأجوبة' : 'Questions & Answers'}
+            <span className="text-xs font-semibold text-gray-400 ms-1">({questions.length})</span>
+          </h2>
+
+          {/* Sort */}
+          {questions.length > 1 && (
+            <div className="flex items-center gap-1.5 mb-5">
+              <Filter size={13} className="text-gray-400 shrink-0" />
+              <select value={questionSortBy} onChange={(e) => setQuestionSortBy(e.target.value)}
+                className="text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl px-3 py-2 border-none outline-none cursor-pointer hover:bg-gray-200 transition-colors"
+              >
+                <option value="recent">{lang === 'ar' ? 'الأحدث' : 'Most Recent'}</option>
+                <option value="helpful">{lang === 'ar' ? 'الأكثر فائدة' : 'Most Helpful'}</option>
+              </select>
             </div>
-            <textarea
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              placeholder={t('pd_reviewPlaceholder')}
-              rows={4}
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all placeholder-gray-400"
-            />
-            <button onClick={handleSubmitReview} disabled={!reviewText.trim()}
-              className="mt-3 bg-blue-900 hover:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold px-7 py-2.5 rounded-2xl text-sm transition-colors"
-            >
-              {t('pd_submitReview')}
-            </button>
+          )}
+
+          {/* Question cards */}
+          <div className="flex flex-col gap-4 mb-8">
+            {filteredQuestions.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 text-sm">
+                {lang === 'ar' ? 'لا توجد أسئلة بعد — كن أول من يسأل!' : 'No questions yet — be the first to ask!'}
+              </div>
+            ) : filteredQuestions.map((question) => (
+              <div key={question.id} className="border border-gray-100 rounded-2xl p-5 hover:border-gray-200 transition-colors">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-100 to-blue-100 flex items-center justify-center text-lg shrink-0">
+                    ❓
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="font-bold text-sm text-gray-800">{question.author}</span>
+                      <span className="text-xs text-gray-400">{lang === 'ar' ? question.date : question.date_en}</span>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed" dir={question.lang === 'en' ? 'ltr' : 'rtl'}>
+                      {question.question}
+                    </p>
+                    {translatedQuestions[question.id] && (
+                      <div className="mt-1.5 pt-2 border-t border-gray-100">
+                        <p className="text-sm text-gray-600 leading-relaxed" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+                          {translatedQuestions[question.id]}
+                        </p>
+                        <span className="text-[10px] text-gray-400 flex items-center gap-1 mt-1">
+                          <Globe size={9} /> Google Translate
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 flex-wrap mt-2">
+                  <button onClick={() => handleQuestionHelpful(question.id)}
+                    className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${questionHelpfulVoted.has(question.id) ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500'}`}
+                  >
+                    <ThumbsUp size={12} className={questionHelpfulVoted.has(question.id) ? 'fill-blue-600' : ''} />
+                    {lang === 'ar' ? 'مفيد' : 'Helpful'} ({question.helpful})
+                  </button>
+                  {/* Translate: only when question lang differs from UI lang */}
+                  {question.lang !== lang && (
+                    <button
+                      onClick={() => handleTranslateQuestion(question)}
+                      disabled={translatingQuestions[question.id]}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                    >
+                      {translatingQuestions[question.id]
+                        ? <><Loader2 size={12} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                        : translatedQuestions[question.id]
+                          ? <><Globe size={12} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                          : <><Globe size={12} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                      }
+                    </button>
+                  )}
+                  {/* Seller: answer button */}
+                  {isSeller && !question.seller_answer && !answerEditorOpen.has(question.id) && (
+                    <button onClick={() => openAnswerEditor(question.id)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+                      <MessageCircle size={12} />{lang === 'ar' ? 'إجابة' : 'Answer'}
+                    </button>
+                  )}
+                  {/* Delete: owner or seller */}
+                  {(isSeller || (user && question.user_id === user.id)) && (
+                    <button onClick={() => handleDeleteQuestion(question.id)}
+                      className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors font-medium">
+                      <Trash2 size={11} />{lang === 'ar' ? 'حذف' : 'Delete'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Answer editor */}
+                {isSeller && answerEditorOpen.has(question.id) && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={answerDrafts[question.id] ?? ''}
+                      onChange={(e) => {
+                        setAnswerDrafts((prev) => ({ ...prev, [question.id]: e.target.value }));
+                        setAnswerTranslations((prev) => { const n = { ...prev }; delete n[question.id]; return n; });
+                      }}
+                      rows={3}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder={lang === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}
+                    />
+                    {answerTranslations[question.id] && (
+                      <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl">
+                        <span className="text-[10px] font-bold text-sky-600 block mb-1">
+                          {lang === 'ar' ? 'الترجمة (EN) — ستُحفظ وتُعرض للمتصفحين بالإنجليزية' : 'Translation (AR) — saved and shown to Arabic viewers'}
+                        </span>
+                        <p className="text-xs text-gray-700 leading-relaxed">{answerTranslations[question.id]}</p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button onClick={() => handleSmartAnswer(question)} disabled={smartAnswerLoading[question.id]}
+                        className="flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
+                        {smartAnswerLoading[question.id]
+                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري توليد الإجابة...' : 'Generating...'}</>
+                          : <><Wand2 size={11} />{lang === 'ar' ? 'اقتراح إجابة بالذكاء الاصطناعي' : 'AI Suggest'}</>}
+                      </button>
+                      <button
+                        onClick={() => handleTranslateAnswerDraft(question.id)}
+                        disabled={translatingAnswer[question.id] || !(answerDrafts[question.id] ?? '').trim()}
+                        className="flex items-center gap-1.5 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
+                      >
+                        {translatingAnswer[question.id]
+                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Translating...'}</>
+                          : <><Globe size={11} />{lang === 'ar' ? 'ترجمة إلى EN' : 'Translate to AR'}</>}
+                      </button>
+                      <button onClick={() => handleSubmitAnswer(question.id)}
+                        disabled={answerSubmitting[question.id] || !(answerDrafts[question.id] ?? '').trim()}
+                        className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
+                        {answerSubmitting[question.id] && <Loader2 size={11} className="animate-spin" />}
+                        {lang === 'ar' ? 'نشر الإجابة' : 'Post Answer'}
+                      </button>
+                      <button onClick={() => { closeAnswerEditor(question.id); setAnswerTranslations((prev) => { const n={...prev}; delete n[question.id]; return n; }); }}
+                        className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-xl transition-colors">
+                        {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Seller answer display */}
+                {(question.seller_answer || question.seller_answer_en) && (() => {
+                  const displayAnswer = lang === 'ar'
+                    ? (question.seller_answer || question.seller_answer_en)
+                    : (question.seller_answer_en || question.seller_answer);
+                  return (
+                    <div className="mt-3 p-3 bg-sky-50 border border-sky-100 rounded-xl">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-sky-700 flex items-center gap-1">
+                          <Store size={10} />{lang === 'ar' ? 'إجابة البائع' : "Seller's Answer"}
+                        </span>
+                        {isSeller && (
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => openAnswerEditor(question.id, question.seller_answer || '')}
+                              className="text-[10px] font-bold text-sky-400 hover:text-sky-700 transition-colors">
+                              {lang === 'ar' ? 'تعديل' : 'Edit'}
+                            </button>
+                            <button onClick={() => handleDeleteAnswer(question.id)}
+                              className="text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors">
+                              {lang === 'ar' ? 'حذف الإجابة' : 'Delete answer'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-700 leading-relaxed">{displayAnswer}</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+
+          {/* Ask a question */}
+          <div className="border-t border-gray-100 pt-6">
+            <h3 className="font-bold text-gray-800 mb-4 text-sm">
+              {lang === 'ar' ? 'اطرح سؤالاً' : 'Ask a Question'}
+            </h3>
+            {!user ? (
+              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-sm text-amber-800">
+                <span className="text-lg">🔒</span>
+                <span className="font-semibold">
+                  {lang === 'ar' ? 'يجب ' : 'You need to '}
+                  <Link to="/login" className="underline font-bold hover:text-amber-900">
+                    {lang === 'ar' ? 'تسجيل الدخول' : 'log in'}
+                  </Link>
+                  {lang === 'ar' ? ' لطرح سؤال' : ' to ask a question'}
+                </span>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={questionText}
+                  onChange={(e) => setQuestionText(e.target.value)}
+                  placeholder={lang === 'ar' ? 'اكتب سؤالك هنا...' : 'Write your question here...'}
+                  rows={3}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all placeholder-gray-400"
+                />
+                <button onClick={handleSubmitQuestion} disabled={!questionText.trim()}
+                  className="mt-3 bg-blue-900 hover:bg-blue-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold px-7 py-2.5 rounded-2xl text-sm transition-colors"
+                >
+                  {lang === 'ar' ? 'إرسال السؤال' : 'Submit Question'}
+                </button>
+              </>
+            )}
           </div>
         </section>
 
@@ -1346,17 +1793,15 @@ export default function ProductDetailsPage() {
             <div>
               <h4 className="font-bold text-sm mb-5">{t('footer_quickLinks')}</h4>
               <ul className="space-y-3">
-                {[t('footer_home'), t('footer_products'), t('footer_families'), t('footer_blog'), t('footer_about')].map((link) => (
-                  <li key={link}><a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a></li>
-                ))}
+                <li><Link to="/" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_home')}</Link></li>
+                <li><button onClick={() => setShowAbout(true)} className="text-blue-300 hover:text-emerald-400 text-sm transition-colors text-start">{t('footer_about')}</button></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-sm mb-5">{t('footer_forFamilies')}</h4>
               <ul className="space-y-3">
-                {[t('footer_registerFam'), t('footer_dashboard'), t('footer_terms'), t('footer_support'), t('footer_faq')].map((link) => (
-                  <li key={link}><a href="#" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{link}</a></li>
-                ))}
+                <li><Link to="/register-family" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_registerFam')}</Link></li>
+                <li><Link to="/dashboard" className="text-blue-300 hover:text-emerald-400 text-sm transition-colors">{t('footer_dashboard')}</Link></li>
               </ul>
             </div>
             <div>
@@ -1405,16 +1850,61 @@ export default function ProductDetailsPage() {
             <ShoppingCart size={15} />
             {stockLevel === 'out'
               ? t('btn_outOfStock')
-              : !deliveryOption
-                ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
-                : needsLocation && !locationConfirmed
-                  ? (lang === 'ar' ? 'أكد موقعك' : 'Confirm Location')
-                  : added
-                    ? t('btn_addedToCart')
-                    : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
+              : needsSize && !selectedSize
+                ? (lang === 'ar' ? 'اختر الحجم أولاً' : 'Select Size First')
+                : needsColor && !selectedColor
+                  ? (lang === 'ar' ? 'اختر الخيار أولاً' : 'Select Option First')
+                  : !deliveryOption
+                    ? (lang === 'ar' ? 'اختر التوصيل' : 'Select Delivery')
+                    : needsLocation && !locationConfirmed
+                      ? (lang === 'ar' ? 'أكد موقعك' : 'Confirm Location')
+                      : added
+                        ? t('btn_addedToCart')
+                        : `${t('btn_addWithPrice')} ${totalPrice} ${t('card_currency')}`}
           </button>
         </div>
       </div>
+
+      {/* About Usaruna modal */}
+      {showAbout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAbout(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowAbout(false)} className="absolute top-4 end-4 text-gray-400 hover:text-gray-600 transition-colors">
+              <X size={22} />
+            </button>
+            <div className="flex items-center gap-3 mb-5">
+              <img src={logo} alt={t('brand_name')} className="w-10 h-10" />
+              <h2 className="text-xl font-extrabold font-brand text-gray-900">{t('brand_name')}</h2>
+            </div>
+            <p className="text-gray-700 text-sm leading-relaxed mb-4">
+              {lang === 'ar'
+                ? 'اسرنا منصة سعودية تربط المتسوقين بالأسر المنتجة المحلية في جميع أنحاء المملكة. نؤمن بأن أفضل المنتجات تُصنع بحب في البيوت السعودية.'
+                : 'Usaruna is a Saudi platform connecting shoppers with local family producers across the Kingdom. We believe the best products are made with love in Saudi homes.'}
+            </p>
+            <ul className="space-y-2.5 text-sm text-gray-600">
+              {(lang === 'ar' ? [
+                '🏠 منتجات منزلية أصيلة من أسر سعودية',
+                '🛵 توصيل محلي سريع أو شحن لجميع المدن',
+                '✅ جودة مضمونة وتقييمات حقيقية',
+                '💚 دعم مباشر للمشاريع العائلية الصغيرة',
+              ] : [
+                '🏠 Authentic homemade products from Saudi families',
+                '🛵 Fast local delivery or nationwide shipping',
+                '✅ Guaranteed quality with real customer reviews',
+                '💚 Direct support for small family businesses',
+              ]).map((item) => (
+                <li key={item} className="flex items-start gap-2">{item}</li>
+              ))}
+            </ul>
+            <div className="mt-6 pt-5 border-t border-gray-100 flex justify-end">
+              <Link to="/register-family" onClick={() => setShowAbout(false)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors">
+                {t('footer_registerFam')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

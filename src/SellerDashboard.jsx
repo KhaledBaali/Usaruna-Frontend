@@ -47,7 +47,8 @@ const T = {
     ap_nameAr: 'اسم المنتج (عربي)', ap_nameEn: 'اسم المنتج (إنجليزي)',
     ap_descAr: 'وصف المنتج (عربي)', ap_descEn: 'وصف المنتج (إنجليزي)',
     ap_price: 'السعر (ريال سعودي)', ap_stock: 'الكمية المتاحة',
-    ap_prepTime: 'وقت التحضير (دقائق)', ap_prepTimePlaceholder: 'مثال: 20',
+    ap_prepTime: 'وقت التحضير', ap_prepTimePlaceholder: 'مثال: 20',
+    unit_minutes: 'دقائق', unit_hours: 'ساعات', unit_days: 'أيام',
     ap_classification: 'التصنيف والموقع',
     ap_category: 'الفئة', ap_city: 'المدينة',
     ap_shipping: 'الشحن والتوصيل',
@@ -188,7 +189,8 @@ const T = {
     ap_nameAr: 'Product Name (Arabic)', ap_nameEn: 'Product Name (English)',
     ap_descAr: 'Description (Arabic)', ap_descEn: 'Description (English)',
     ap_price: 'Price (SAR)', ap_stock: 'Available Stock',
-    ap_prepTime: 'Preparation Time (minutes)', ap_prepTimePlaceholder: 'e.g. 20',
+    ap_prepTime: 'Preparation Time', ap_prepTimePlaceholder: 'e.g. 20',
+    unit_minutes: 'Minutes', unit_hours: 'Hours', unit_days: 'Days',
     ap_classification: 'Classification & Location',
     ap_category: 'Category', ap_city: 'City',
     ap_shipping: 'Shipping & Delivery',
@@ -642,6 +644,21 @@ function serializeDeliveryTypes(arr) {
   return arr.length === 1 ? arr[0] : JSON.stringify(arr);
 }
 
+// ─── Prep time unit helpers ───────────────────────────────────────────────────
+function toMinutes(value, unit) {
+  const v = parseInt(value) || 0;
+  if (unit === 'hours') return v * 60;
+  if (unit === 'days')  return v * 60 * 24;
+  return v;
+}
+
+function fromMinutes(minutes) {
+  if (!minutes) return { value: '', unit: 'minutes' };
+  if (minutes % (60 * 24) === 0) return { value: String(minutes / (60 * 24)), unit: 'days' };
+  if (minutes % 60 === 0)        return { value: String(minutes / 60),        unit: 'hours' };
+  return { value: String(minutes), unit: 'minutes' };
+}
+
 // ─── DeliveryCheckCard — shared checkbox card for add & edit ──────────────────
 
 function DeliveryCheckCard({ checked, onToggle, disabled, Icon, iconColor, label, sub, activeBorder, activeBg }) {
@@ -694,7 +711,9 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
   const [descEn,         setDescEn]         = useState(product.description_en ?? '');
   const [price,          setPrice]          = useState(String(product.price ?? ''));
   const [stock,          setStock]          = useState(String(product.stock ?? ''));
-  const [prepTime,       setPrepTime]       = useState(String(product.prep_time ?? ''));
+  const _initPrep = fromMinutes(product.prep_time);
+  const [prepTime,       setPrepTime]       = useState(_initPrep.value);
+  const [prepTimeUnit,   setPrepTimeUnit]   = useState(_initPrep.unit);
   const [deliveryTypes,  setDeliveryTypes]  = useState(parseDeliveryTypes(product));
   const [saving,         setSaving]         = useState(false);
   const [deleting,       setDeleting]       = useState(false);
@@ -783,7 +802,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
       name_en:        nameEn.trim()  || null,
       description_ar: descAr.trim() || null,
       description_en: descEn.trim() || null,
-      prep_time:      prepTime ? parseInt(prepTime) : null,
+      prep_time:      prepTime ? toMinutes(prepTime, prepTimeUnit) : null,
     };
     if (finalUrls.length > 0) {
       updatePayload.image_url = finalUrls[0];
@@ -916,13 +935,17 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">{t.ap_prepTime}</label>
-              <div className="relative">
+              <div className="flex gap-2">
                 <input type="number" min="0" step="1" value={prepTime}
                   onChange={(e) => setPrepTime(e.target.value)}
-                  className={inputCls} disabled={busy} placeholder="0" />
-                <span className="absolute end-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-gray-400 pointer-events-none">
-                  {isRtl ? 'د' : 'min'}
-                </span>
+                  className={`${inputCls} flex-1`} disabled={busy} placeholder="0" />
+                <select value={prepTimeUnit} onChange={(e) => setPrepTimeUnit(e.target.value)}
+                  disabled={busy}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all">
+                  <option value="minutes">{t.unit_minutes}</option>
+                  <option value="hours">{t.unit_hours}</option>
+                  <option value="days">{t.unit_days}</option>
+                </select>
               </div>
             </div>
           </div>
@@ -1278,7 +1301,7 @@ const EMPTY_PRODUCT = {
   price: '', category_id: '',
   delivery_types: ['third_party'],
   stock: '',
-  prep_time: '',
+  prep_time: '', prep_time_unit: 'minutes',
   sizes: [], colors: [], specs: [],
 };
 
@@ -1377,7 +1400,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       const nameEn       = form.name_en.trim();
       const descAr       = form.description_ar.trim();
       const descEn       = form.description_en.trim();
-      const prepTimeVal  = form.prep_time ? parseInt(form.prep_time) : null;
+      const prepTimeVal  = form.prep_time ? toMinutes(form.prep_time, form.prep_time_unit) : null;
       if (nameEn)                  payload.name_en        = nameEn;
       if (descAr)                  payload.description_ar = descAr;
       if (descEn)                  payload.description_en = descEn;
@@ -1516,18 +1539,25 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
             {/* Preparation time */}
             <div className="grid grid-cols-2 gap-4">
               <Field label={t.ap_prepTime}>
-                <div className="relative">
+                <div className="flex gap-2">
                   <input
                     type="number" min="0" step="1"
                     placeholder={t.ap_prepTimePlaceholder}
                     value={form.prep_time}
                     onChange={(e) => set('prep_time', e.target.value)}
-                    className={inputCls}
+                    className={`${inputCls} flex-1`}
                     disabled={submitting}
                   />
-                  <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 pointer-events-none">
-                    {t.dir === 'rtl' ? 'دقيقة' : 'min'}
-                  </span>
+                  <select
+                    value={form.prep_time_unit}
+                    onChange={(e) => set('prep_time_unit', e.target.value)}
+                    disabled={submitting}
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all"
+                  >
+                    <option value="minutes">{t.unit_minutes}</option>
+                    <option value="hours">{t.unit_hours}</option>
+                    <option value="days">{t.unit_days}</option>
+                  </select>
                 </div>
               </Field>
             </div>
@@ -1628,9 +1658,14 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
                 <input type="text" placeholder={t.ap_sizeNameEn} value={size.label_en}
                   onChange={(e) => updateSize(i, 'label_en', e.target.value)}
                   className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" dir="ltr" />
-                <input type="number" placeholder="0" value={size.price_adj}
-                  onChange={(e) => updateSize(i, 'price_adj', parseFloat(e.target.value) || 0)}
-                  className="w-20 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden self-stretch">
+                  <span className="px-2 self-stretch flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 border-e border-gray-200 select-none whitespace-nowrap">
+                    {t.dir === 'rtl' ? '+ ر.س' : '+ SAR'}
+                  </span>
+                  <input type="number" placeholder="0" value={size.price_adj}
+                    onChange={(e) => updateSize(i, 'price_adj', parseFloat(e.target.value) || 0)}
+                    className="w-16 px-2 py-2 text-sm focus:outline-none" />
+                </div>
                 <button type="button" onClick={() => removeSize(i)} className="text-red-400 hover:text-red-600 p-1 transition-colors">
                   <X size={14} />
                 </button>
@@ -2361,7 +2396,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
           <span className="hidden sm:flex items-center gap-1.5 text-sm text-blue-300">
             <User size={14} />{displayName}
           </span>
-          <button onClick={logout}
+          <button onClick={async () => { await logout(); navigate('/'); }}
             className="flex items-center gap-1.5 text-blue-300 hover:text-white text-xs font-semibold
               border border-blue-800 hover:border-blue-500 rounded-xl px-3 py-1.5 transition-all">
             <LogOut size={13} />{t.logout}
