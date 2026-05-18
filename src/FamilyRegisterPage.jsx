@@ -256,15 +256,15 @@ export default function FamilyRegisterPage() {
       //   CREATE POLICY "producers can insert own profile"
       //   ON public.producer_profiles FOR INSERT TO authenticated
       //   WITH CHECK (auth.uid() = user_id);
-      const { error: profileError } = await supabase
-        .from('producer_profiles')
-        .insert({
-          user_id:          data.user.id,
-          business_name_ar: form.familyName.trim(),
-          city_id:          parseInt(form.city),
-          category_id:      parseInt(form.category),
-          description_ar:   form.description.trim() || null,
-        });
+      const { error: profileError } = await supabase.rpc('create_producer_profile', {
+        p_user_id:     data.user.id,
+        p_name_ar:     form.familyName.trim(),
+        p_city_id:     parseInt(form.city),
+        p_category_id: parseInt(form.category),
+        p_desc_ar:     form.description.trim() || null,
+        p_email:       form.email.trim(),
+        p_phone:       form.phone.trim() || null,
+      });
 
       if (profileError) {
         // Auth succeeded but profile insert failed — surface a specific error.

@@ -7,7 +7,7 @@ import {
   Settings, LayoutDashboard, TrendingUp, ClipboardList, ImagePlus, X, Trash2, Star,
   Printer, Plus, Globe, Pencil, Zap, Home, Inbox, ChevronDown,
   Clock, Circle, RefreshCw, Check, CreditCard, Search, Phone, MessageCircle,
-  Upload, FileImage, Wand2,
+  Upload, FileImage, Wand2, RotateCcw,
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
@@ -55,6 +55,10 @@ const T = {
     ap_deliveryType: 'نوع التوصيل', ap_nature: 'طبيعة المنتج',
     ap_perishable: 'منتج طازج (يتطلب توصيل في نفس اليوم)',
     ap_perishableNote: 'سيظهر هذا المنتج فقط للعملاء في نفس مدينتك',
+    ap_returnable: 'قابل للإرجاع',
+    ap_returnableNote: 'يمكن للعميل إرجاع المنتج بشرط أن يكون بحالته الأصلية',
+    ap_notReturnable: 'غير قابل للإرجاع',
+    ap_notReturnableNote: 'لا يمكن للعميل إرجاع المنتج',
     ap_nationwide: '🚚 لجميع المناطق', ap_local: '📍 محلي فقط',
     ap_selectCat: '— اختر الفئة —', ap_selectCity: '— اختر المدينة —',
     ap_sizes: 'الأحجام والخيارات (اختياري)',
@@ -197,6 +201,10 @@ const T = {
     ap_deliveryType: 'Delivery Type', ap_nature: 'Product Nature',
     ap_perishable: 'Fresh / Perishable',
     ap_perishableNote: 'This product will only be visible to customers in your city',
+    ap_returnable: 'Returnable',
+    ap_returnableNote: 'Customer can return the product as long as it is in its original condition',
+    ap_notReturnable: 'Not Returnable',
+    ap_notReturnableNote: 'Customer can not return the product',
     ap_nationwide: '🚚 Nationwide', ap_local: '📍 Local Only',
     ap_selectCat: '— Select Category —', ap_selectCity: '— Select City —',
     ap_sizes: 'Sizes & Options (optional)',
@@ -778,11 +786,11 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
       if (typeof img === 'string') {
         finalUrls.push(img);
       } else {
-        const ext      = img.name.split('.').pop().toLowerCase();
-        const filePath = `${product.producer_id}/${crypto.randomUUID()}.${ext}`;
+        const compressed = await compressImage(img);
+        const filePath   = `${product.producer_id}/${crypto.randomUUID()}.jpg`;
         const { error: uploadErr } = await supabase.storage
           .from('product-images')
-          .upload(filePath, img, { upsert: false, contentType: img.type });
+          .upload(filePath, compressed, { upsert: false, contentType: 'image/jpeg' });
         if (uploadErr) {
           showToast(`${t.ap_errUpload}${uploadErr.message}`, 'error');
           setSaving(false);
@@ -806,6 +814,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
     };
     if (finalUrls.length > 0) {
       updatePayload.image_url = finalUrls[0];
+      updatePayload.images    = finalUrls;
     }
 
     const { data, error } = await supabase
@@ -957,7 +966,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
             </label>
             <MultiImageDropZone
               files={images}
-              onAdd={(f) => setImages((prev) => prev.length < MAX_IMAGES ? [...prev, f] : prev)}
+              onAdd={(newFiles) => setImages((prev) => [...prev, ...newFiles].slice(0, MAX_IMAGES))}
               onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
               disabled={busy}
               t={t}
@@ -1205,7 +1214,34 @@ function MyProductsTab({ profile, t, showToast }) {
 // ─── Multi-Image Upload Drop Zone (1-5 images, JPEG/JPG/PNG only) ─────────────
 
 const MAX_IMAGES = 5;
-const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+
+// Compress + resize an image file via canvas before uploading
+async function compressImage(file, maxPx = 1920, quality = 0.82) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else                  { width  = Math.round(width  * maxPx / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => resolve(blob
+          ? new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+          : file),
+        'image/jpeg', quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve(file); };
+    img.src = blobUrl;
+  });
+}
 
 function MultiImageDropZone({ files, onAdd, onRemove, disabled, t, isRtl }) {
   const inputRef = useRef(null);
@@ -1213,12 +1249,13 @@ function MultiImageDropZone({ files, onAdd, onRemove, disabled, t, isRtl }) {
   const canAdd = files.length < MAX_IMAGES;
 
   const acceptFiles = useCallback((rawFiles) => {
-    const valid = Array.from(rawFiles).filter((f) =>
-      ALLOWED_TYPES.includes(f.type) && f.size <= 5 * 1024 * 1024
-    );
-    const slots = MAX_IMAGES - files.length;
-    valid.slice(0, slots).forEach((f) => onAdd(f));
-  }, [files.length, onAdd]);
+    const valid = Array.from(rawFiles).filter((f) => {
+      const ext = f.name.split('.').pop().toLowerCase();
+      const typeOk = f.type.startsWith('image/') || ALLOWED_EXTS.includes(ext);
+      return typeOk && f.size <= 10 * 1024 * 1024; // 10 MB
+    });
+    onAdd(valid);
+  }, [onAdd]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();
@@ -1270,10 +1307,10 @@ function MultiImageDropZone({ files, onAdd, onRemove, disabled, t, isRtl }) {
             ref={inputRef}
             type="file"
             multiple
-            accept="image/jpeg,image/jpg,image/png"
+            accept="image/*"
             className="sr-only"
             disabled={disabled}
-            onChange={(e) => acceptFiles(e.target.files)}
+            onChange={(e) => { acceptFiles(e.target.files); e.target.value = ''; }}
           />
           <div className="flex flex-col items-center gap-2 px-6 text-center pointer-events-none">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${drag ? 'bg-blue-100' : 'bg-gray-100'}`}>
@@ -1281,7 +1318,7 @@ function MultiImageDropZone({ files, onAdd, onRemove, disabled, t, isRtl }) {
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-600">{drag ? t.img_drop : t.img_click}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{isRtl ? 'JPEG · PNG — بحد أقصى 5 MB' : 'JPEG · PNG — max 5 MB'}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{isRtl ? 'JPEG · PNG · WebP — بحد أقصى 10 MB' : 'JPEG · PNG · WebP — max 10 MB'}</p>
               <p className="text-[11px] text-blue-500 font-medium mt-0.5">
                 {isRtl ? `${files.length} / ${MAX_IMAGES} صور` : `${files.length} / ${MAX_IMAGES} images`}
               </p>
@@ -1303,6 +1340,7 @@ const EMPTY_PRODUCT = {
   stock: '',
   prep_time: '', prep_time_unit: 'minutes',
   sizes: [], colors: [], specs: [],
+  is_returnable: false,
 };
 
 const PHASE_LABELS = (t) => ({ idle: null, uploading: t.ap_uploading, saving: t.ap_saving });
@@ -1362,11 +1400,11 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       if (imageFiles.length > 0) {
         setPhase('uploading');
         for (const file of imageFiles) {
-          const ext      = file.name.split('.').pop().toLowerCase();
-          const filePath = `${profile.user_id}/${crypto.randomUUID()}.${ext}`;
+          const compressed = await compressImage(file);
+          const filePath   = `${profile.user_id}/${crypto.randomUUID()}.jpg`;
           const { error: uploadError } = await supabase.storage
             .from('product-images')
-            .upload(filePath, file, { upsert: false, contentType: file.type });
+            .upload(filePath, compressed, { upsert: false, contentType: 'image/jpeg' });
           if (uploadError) { showToast(`${t.ap_errUpload}${uploadError.message}`, 'error'); return; }
           const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filePath);
           images_urls.push(urlData.publicUrl);
@@ -1393,6 +1431,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
         delivery_type: serializeDeliveryTypes(delivTypes),
         stock:         parseInt(form.stock),
         image_url,
+        images:        images_urls.length > 0 ? images_urls : undefined,
         is_active:     true,
       };
       // Optional text columns — only include when the column exists in your schema
@@ -1408,6 +1447,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
       if (form.sizes.length)       payload.sizes          = form.sizes;
       if (form.colors.length)      payload.colors         = form.colors;
       if (form.specs.length)       payload.specs          = form.specs;
+      payload.is_returnable = form.is_returnable ?? false;
 
       const { data: insertData, error: insertError } = await supabase
         .from('products')
@@ -1468,7 +1508,7 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
           <div className="mt-4">
             <MultiImageDropZone
               files={imageFiles}
-              onAdd={(f) => setImageFiles((prev) => [...prev, f])}
+              onAdd={(newFiles) => setImageFiles((prev) => [...prev, ...newFiles].slice(0, MAX_IMAGES))}
               onRemove={(i) => setImageFiles((prev) => prev.filter((_, j) => j !== i))}
               disabled={submitting}
               t={t}
@@ -1646,6 +1686,38 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
 
         <Divider />
 
+        {/* Return Policy */}
+        <section>
+          <SectionTitle icon={RotateCcw} label={t.dir === 'rtl' ? 'سياسة الإرجاع' : 'Return Policy'} />
+          <div className="flex flex-col gap-3 mt-4">
+            {[
+              { value: true,  label: t.ap_returnable,    note: t.ap_returnableNote,    icon: '✅', border: 'border-emerald-400', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+              { value: false, label: t.ap_notReturnable, note: t.ap_notReturnableNote, icon: '🚫', border: 'border-red-300',     bg: 'bg-red-50',     text: 'text-red-600'   },
+            ].map((opt) => {
+              const selected = form.is_returnable === opt.value;
+              return (
+                <button key={String(opt.value)} type="button"
+                  onClick={() => set('is_returnable', opt.value)}
+                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 transition-all text-start
+                    ${selected ? `${opt.border} ${opt.bg}` : 'border-gray-100 bg-gray-50 hover:border-gray-200'}`}
+                >
+                  <span className="text-xl shrink-0 mt-0.5">{opt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-bold text-sm ${selected ? opt.text : 'text-gray-700'}`}>{opt.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{opt.note}</p>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-1 flex items-center justify-center transition-colors
+                    ${selected ? `${opt.border} ${opt.bg.replace('50', '500')}` : 'border-gray-300'}`}>
+                    {selected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <Divider />
+
         {/* Sizes */}
         <section>
           <SectionTitle icon={Archive} label={t.ap_sizes} />
@@ -1659,11 +1731,24 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
                   onChange={(e) => updateSize(i, 'label_en', e.target.value)}
                   className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" dir="ltr" />
                 <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden self-stretch">
-                  <span className="px-2 self-stretch flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 border-e border-gray-200 select-none whitespace-nowrap">
-                    {t.dir === 'rtl' ? '+ ر.س' : '+ SAR'}
-                  </span>
-                  <input type="number" placeholder="0" value={size.price_adj}
-                    onChange={(e) => updateSize(i, 'price_adj', parseFloat(e.target.value) || 0)}
+                  <button
+                    type="button"
+                    onClick={() => updateSize(i, 'price_adj', -(size.price_adj || 0))}
+                    className={`px-2 self-stretch flex items-center text-xs font-bold border-e border-gray-200 whitespace-nowrap transition-colors ${
+                      size.price_adj < 0
+                        ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                        : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {size.price_adj < 0
+                      ? (t.dir === 'rtl' ? '− ر.س' : '− SAR')
+                      : (t.dir === 'rtl' ? '+ ر.س' : '+ SAR')}
+                  </button>
+                  <input type="number" placeholder="0" value={Math.abs(size.price_adj) || ''}
+                    onChange={(e) => {
+                      const abs = parseFloat(e.target.value) || 0;
+                      updateSize(i, 'price_adj', size.price_adj < 0 ? -abs : abs);
+                    }}
                     className="w-16 px-2 py-2 text-sm focus:outline-none" />
                 </div>
                 <button type="button" onClick={() => removeSize(i)} className="text-red-400 hover:text-red-600 p-1 transition-colors">
@@ -1937,17 +2022,14 @@ export default function SellerDashboard() {
 // ─── Producer Orders Tab ────────────────────────────────────────────────────────
 
 const ORDER_STATUSES = [
-  'pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled',
+  'pending', 'confirmed', 'processing', 'shipped',
 ];
 
 const STATUS_META = {
   pending:          { ar: 'قيد الانتظار',    en: 'Pending',          dot: 'bg-yellow-400',  badge: 'bg-yellow-50 text-yellow-700 border-yellow-300',  card: 'border-yellow-200'  },
   confirmed:        { ar: 'تم التأكيد',      en: 'Confirmed',        dot: 'bg-blue-500',    badge: 'bg-blue-50 text-blue-700 border-blue-300',        card: 'border-blue-200'    },
-  preparing:        { ar: 'قيد التحضير',    en: 'Preparing',        dot: 'bg-orange-500',  badge: 'bg-orange-50 text-orange-700 border-orange-300',  card: 'border-orange-200'  },
   processing:       { ar: 'قيد التحضير',    en: 'Preparing',        dot: 'bg-orange-500',  badge: 'bg-orange-50 text-orange-700 border-orange-300',  card: 'border-orange-200'  },
-  ready:            { ar: 'جاهز للاستلام',  en: 'Ready',            dot: 'bg-purple-500',  badge: 'bg-purple-50 text-purple-700 border-purple-300',  card: 'border-purple-200'  },
-  out_for_delivery: { ar: 'خرج للتوصيل',   en: 'Out for Delivery', dot: 'bg-cyan-500',    badge: 'bg-cyan-50 text-cyan-700 border-cyan-300',        card: 'border-cyan-200'    },
-  shipped:          { ar: 'خرج للتوصيل',   en: 'Out for Delivery', dot: 'bg-cyan-500',    badge: 'bg-cyan-50 text-cyan-700 border-cyan-300',        card: 'border-cyan-200'    },
+  shipped:          { ar: 'جاهز للاستلام',  en: 'Ready',            dot: 'bg-purple-500',  badge: 'bg-purple-50 text-purple-700 border-purple-300',  card: 'border-purple-200'  },
   delivered:        { ar: 'تم التسليم',     en: 'Delivered',        dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-300',card: 'border-emerald-200' },
   cancelled:        { ar: 'ملغي',           en: 'Cancelled',        dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 border-red-200',           card: 'border-red-200'     },
 };
@@ -1970,6 +2052,7 @@ function StatusDropdown({ currentStatus, onUpdate, lang, t }) {
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badge} hover:opacity-80 transition-opacity`}
       >
@@ -1984,6 +2067,7 @@ function StatusDropdown({ currentStatus, onUpdate, lang, t }) {
             const sm = STATUS_META[s];
             return (
               <button
+                type="button"
                 key={s}
                 onClick={() => { setOpen(false); onUpdate(s); }}
                 className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold hover:bg-gray-50 transition-colors
@@ -2033,8 +2117,8 @@ function ProducerOrdersTab({ t, showToast, profile }) {
     setLoading(true);
     supabase
       .from('order_items')
-      .select('*, orders(id, order_number, created_at, total_amount, payment_method, customer_name, customer_phone, delivery_address)')
-      .eq('producer_id', profile.id)
+      .select('*, orders(id, order_number, created_at, total_amount, delivery_total, pay_method, status)')
+      .eq('producer_id', profile.user_id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) console.error('[ProducerOrdersTab]', error);
@@ -2045,12 +2129,19 @@ function ProducerOrdersTab({ t, showToast, profile }) {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
+  const getStatus = (i) => i.orders?.status ?? 'pending';
+
   const handleStatusUpdate = async (itemId, newStatus) => {
-    setOrderItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: newStatus } : i));
-    const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
+    // status lives on the orders row; find the order_id for this item
+    const item = orderItems.find((i) => i.id === itemId);
+    if (!item?.order_id) return;
+    setOrderItems((prev) => prev.map((i) =>
+      i.order_id === item.order_id ? { ...i, orders: { ...i.orders, status: newStatus } } : i
+    ));
+    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', item.order_id);
     if (error) {
       showToast(t.ord_updateErr + error.message, 'error');
-      fetchOrders(); // rollback via re-fetch
+      fetchOrders();
     } else {
       showToast(t.ord_updateOk, 'success');
     }
@@ -2061,11 +2152,11 @@ function ProducerOrdersTab({ t, showToast, profile }) {
   const todayItems = orderItems.filter((i) =>
     new Date(i.orders?.created_at ?? i.created_at ?? 0).toDateString() === todayStr
   );
-  const pendingCount   = orderItems.filter((i) => (i.status ?? 'pending') === 'pending').length;
-  const preparingCount = orderItems.filter((i) => ['preparing','processing'].includes(i.status ?? '')).length;
-  const doneCount      = orderItems.filter((i) => i.status === 'delivered').length;
+  const pendingCount   = orderItems.filter((i) => getStatus(i) === 'pending').length;
+  const preparingCount = orderItems.filter((i) => getStatus(i) === 'processing').length;
+  const doneCount      = orderItems.filter((i) => getStatus(i) === 'shipped').length;
   const dailyRevenue   = todayItems
-    .filter((i) => i.status === 'delivered')
+    .filter((i) => getStatus(i) === 'shipped')
     .reduce((s, i) => s + (i.price_at_purchase ?? 0) * (i.quantity ?? 1), 0);
 
   // ── Filter ─────────────────────────────────────────────────────────────────
@@ -2073,10 +2164,10 @@ function ProducerOrdersTab({ t, showToast, profile }) {
     const order   = item.orders ?? {};
     const name    = isRtl ? (item.name_ar ?? '') : (item.name_en ?? item.name_ar ?? '');
     const orderNum = String(order.order_number ?? item.id ?? '');
-    const custName = String(order.customer_name ?? '');
+    const custName = '';
     const q = search.toLowerCase();
     const matchSearch = !q || name.toLowerCase().includes(q) || orderNum.toLowerCase().includes(q) || custName.toLowerCase().includes(q);
-    const matchStatus = filterStatus === 'all' || (item.status ?? 'pending') === filterStatus;
+    const matchStatus = filterStatus === 'all' || getStatus(item) === filterStatus;
     return matchSearch && matchStatus;
   });
 
@@ -2194,7 +2285,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
         {filtered.map((item) => {
           const name      = isRtl ? (item.name_ar ?? '—') : (item.name_en ?? item.name_ar ?? '—');
           const order     = item.orders ?? {};
-          const status    = item.status ?? 'pending';
+          const status    = getStatus(item);
           const sm        = STATUS_META[status] ?? STATUS_META.pending;
           const isExpanded = expandedId === item.id;
 
@@ -2219,12 +2310,12 @@ function ProducerOrdersTab({ t, showToast, profile }) {
             cod:   isRtl ? 'الدفع عند الاستلام' : 'Cash on Delivery',
             apple: 'Apple Pay',
             card:  isRtl ? 'بطاقة تجريبية' : 'Demo Card',
-          }[order.payment_method ?? ''] ?? (order.payment_method ?? '—');
+          }[order.pay_method ?? ''] ?? (order.pay_method ?? '—');
 
           const lineTotal = (item.price_at_purchase ?? 0) * (item.quantity ?? 1);
 
           // Status flow for "advance to next" button
-          const FLOW = ['pending','confirmed','preparing','ready','out_for_delivery','delivered'];
+          const FLOW = ['pending', 'confirmed', 'processing', 'shipped'];
           const currentIdx = FLOW.indexOf(status);
           const nextStatus = currentIdx >= 0 && currentIdx < FLOW.length - 1 ? FLOW[currentIdx + 1] : null;
 
@@ -2287,12 +2378,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                     {isRtl ? 'تفاصيل العميل والتوصيل' : 'Customer & Delivery Details'}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <InfoCard icon={<User size={13} />}       label={t.ord_customer} value={order.customer_name}    isRtl={isRtl} />
-                    <InfoCard icon={<Phone size={13} />}      label={t.ord_phone}    value={order.customer_phone}   isRtl={isRtl} ltr />
-                    <InfoCard icon={<CreditCard size={13} />} label={t.ord_payment}  value={payLabel}               isRtl={isRtl} />
-                    {order.delivery_address && (
-                      <InfoCard icon={<MapPin size={13} />}   label={t.ord_address}  value={order.delivery_address} isRtl={isRtl} />
-                    )}
+                    <InfoCard icon={<CreditCard size={13} />} label={t.ord_payment}  value={payLabel} isRtl={isRtl} />
                   </div>
                 </div>
               )}
@@ -2302,6 +2388,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                 {/* Accept (pending only) */}
                 {status === 'pending' && (
                   <button
+                    type="button"
                     onClick={() => handleStatusUpdate(item.id, 'confirmed')}
                     className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
                   >
@@ -2309,19 +2396,10 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                   </button>
                 )}
 
-                {/* Reject (pending/confirmed) */}
-                {['pending','confirmed'].includes(status) && (
-                  <button
-                    onClick={() => handleStatusUpdate(item.id, 'cancelled')}
-                    className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold px-3 py-2 rounded-xl transition-colors"
-                  >
-                    <X size={13} /> {t.ord_reject}
-                  </button>
-                )}
-
                 {/* Advance to next status */}
                 {nextStatus && status !== 'pending' && (
                   <button
+                    type="button"
                     onClick={() => handleStatusUpdate(item.id, nextStatus)}
                     className="flex items-center gap-1.5 bg-blue-900 hover:bg-blue-800 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
                   >
@@ -2340,17 +2418,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                   t={t}
                 />
 
-                {/* Contact via WhatsApp */}
-                {order.customer_phone && (
-                  <a
-                    href={`https://wa.me/${String(order.customer_phone).replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ms-auto flex items-center gap-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-bold px-3 py-2 rounded-xl transition-colors"
-                  >
-                    <MessageCircle size={13} /> {t.ord_contact}
-                  </a>
-                )}
+                {/* Contact via WhatsApp — phone not stored in orders table */}
               </div>
             </div>
           );

@@ -13,6 +13,7 @@ import { fetchProducts } from './lib/api';
 import { supabase } from './supabase';
 import AccountMenu from './AccountMenu';
 import logo from './assets/logo.png';
+import heroHouse from './assets/hero-house.jpg';
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
@@ -48,12 +49,24 @@ function ProductCard({ product, onAddToCart }) {
   const { lang, t } = useLang();
   const { toggle, isLiked } = useWishlist();
   const liked    = isLiked(product.id);
-  const [added,     setAdded]     = useState(false);
-  const [imgError,  setImgError]  = useState(false);
+  const [added,        setAdded]        = useState(false);
+  const [imgError,     setImgError]     = useState(false);
+  const [selectedSize,  setSelectedSize]  = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
   const navigate = useNavigate();
 
-  const handleAdd = () => {
-    onAddToCart(product);
+  const sizes  = Array.isArray(product.sizes)  ? product.sizes  : [];
+  const colors = Array.isArray(product.colors) ? product.colors : [];
+  const needsSize  = sizes.length  > 0;
+  const needsColor = colors.length > 0;
+  const canAdd = (!needsSize || selectedSize !== null) && (!needsColor || selectedColor !== null);
+
+  const handleAdd = (e) => {
+    e.stopPropagation();
+    if (!canAdd) return;
+    const chosenSize  = selectedSize  !== null ? sizes.find((s) => s.id === selectedSize)   ?? null : null;
+    const chosenColor = selectedColor !== null ? colors.find((c) => c.id === selectedColor) ?? null : null;
+    onAddToCart(product, 1, { chosenSize, chosenColor });
     setAdded(true);
     setTimeout(() => setAdded(false), 1600);
   };
@@ -64,6 +77,7 @@ function ProductCard({ product, onAddToCart }) {
   const city   = lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity);
   const family = lang === 'ar' ? product.family : (product.familyEn || product.family);
   const hasRealImage = product.image_url && !imgError;
+  const sizeAdj = selectedSize !== null ? (sizes.find((s) => s.id === selectedSize)?.priceAdj ?? 0) : 0;
 
   return (
     <div className="bg-white rounded-3xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col">
@@ -72,36 +86,54 @@ function ProductCard({ product, onAddToCart }) {
         className={`relative bg-gradient-to-br ${product.gradient ?? 'from-blue-50 to-indigo-100'} h-44 sm:h-48 flex items-center justify-center flex-shrink-0 cursor-pointer overflow-hidden`}
       >
         {hasRealImage ? (
-          <img
-            src={product.image_url}
-            alt={name}
-            onError={() => setImgError(true)}
-            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+          <img src={product.image_url} alt={name} onError={() => setImgError(true)}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
           <span className="text-6xl select-none drop-shadow-sm group-hover:scale-110 transition-transform duration-300">
             {product.emoji ?? '📦'}
           </span>
         )}
+
+        {/* Wishlist + badges row — always physical left */}
+        <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5 z-10 flex-wrap max-w-[85%]" dir="ltr">
+          <button
+            onClick={(e) => { e.stopPropagation(); toggle(product); }}
+            className="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform shrink-0"
+            aria-label={t('card_wishlist')}
+          >
+            <Heart size={14} className={liked ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
+          </button>
+          {(product.rating ?? 0) >= 4 && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-white/90 backdrop-blur-sm border border-amber-200 rounded-full px-2 py-1 shadow-sm">
+              ⭐ {lang === 'ar' ? 'تقييم عالٍ' : 'Top Rated'}
+            </span>
+          )}
+          {product.isReturnable && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-white/90 backdrop-blur-sm border border-emerald-200 rounded-full px-2 py-1 shadow-sm">
+              🔄 {lang === 'ar' ? 'قابل للإرجاع' : 'Returnable'}
+            </span>
+          )}
+          {product.isPerishable ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-white/90 backdrop-blur-sm border border-blue-200 rounded-full px-2 py-1 shadow-sm">
+              🛵 {lang === 'ar' ? 'توصيل البائع' : 'Seller Delivery'}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-white/90 backdrop-blur-sm border border-violet-200 rounded-full px-2 py-1 shadow-sm">
+              📦 {lang === 'ar' ? 'شحن وطني' : 'Nationwide'}
+            </span>
+          )}
+        </div>
+
         {badge && (
           <span className={`absolute top-3.5 right-3.5 ${product.badgeColor ?? 'bg-blue-600'} text-white text-[11px] font-bold px-2.5 py-1 rounded-full z-10`}>
             {badge}
           </span>
         )}
-        <button
-          onClick={(e) => { e.stopPropagation(); toggle(product); }}
-          className="absolute top-3.5 left-3.5 bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm hover:scale-110 transition-transform z-10"
-          aria-label={t('card_wishlist')}
-        >
-          <Heart size={14} className={liked ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
-        </button>
       </div>
 
-      <div className="p-5 flex flex-col flex-1 gap-2.5">
-        <h3
-          onClick={goToProduct}
-          className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 cursor-pointer hover:text-blue-700 transition-colors"
-        >
+      <div className="p-5 flex flex-col flex-1 gap-2">
+        <h3 onClick={goToProduct}
+          className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 cursor-pointer hover:text-blue-700 transition-colors">
           {name}
         </h3>
 
@@ -112,8 +144,6 @@ function ProductCard({ product, onAddToCart }) {
           {family && city && <span>{family}</span>}
         </p>
 
-        <DeliveryTag isPerishable={product.isPerishable ?? product.is_perishable} />
-
         {(product.reviews ?? 0) > 0 && (
           <div className="flex items-center gap-1.5">
             <StarRating rating={product.rating ?? 0} />
@@ -123,9 +153,51 @@ function ProductCard({ product, onAddToCart }) {
           </div>
         )}
 
+        {/* Size selector */}
+        {needsSize && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 mb-1">{lang === 'ar' ? 'الحجم' : 'Size'}</p>
+            <div className="flex flex-wrap gap-1">
+              {sizes.map((s) => (
+                <button key={s.id} type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedSize(selectedSize === s.id ? null : s.id); }}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                    selectedSize === s.id
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+                  }`}>
+                  {lang === 'ar' ? s.label : (s.labelEn || s.label)}
+                  {s.priceAdj !== 0 && (
+                    <span className={`ms-0.5 ${s.priceAdj > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {s.priceAdj > 0 ? '+' : ''}{s.priceAdj}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Color selector */}
+        {needsColor && (
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 mb-1">{lang === 'ar' ? 'اللون' : 'Color'}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {colors.map((c) => (
+                <button key={c.id} type="button" title={lang === 'ar' ? c.label : (c.labelEn || c.label)}
+                  onClick={(e) => { e.stopPropagation(); setSelectedColor(selectedColor === c.id ? null : c.id); }}
+                  className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${
+                    selectedColor === c.id ? 'border-blue-900 scale-110' : 'border-transparent'
+                  }`}
+                  style={{ background: c.hex }} />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mt-auto pt-0.5">
           <span className="text-lg font-extrabold text-blue-900 leading-none">
-            {product.price}
+            {(product.price + sizeAdj).toFixed(0)}
             <span className="text-sm font-bold"> {t('card_currency')}</span>
           </span>
           {product.originalPrice && (
@@ -135,16 +207,20 @@ function ProductCard({ product, onAddToCart }) {
           )}
         </div>
 
-        <button
-          onClick={handleAdd}
+        <button onClick={handleAdd} disabled={!canAdd}
           className={`w-full py-2.5 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2
             ${added
               ? 'bg-emerald-500 text-white scale-[0.97]'
-              : 'bg-blue-900 hover:bg-blue-800 text-white active:scale-[0.97]'
+              : canAdd
+                ? 'bg-blue-900 hover:bg-blue-800 text-white active:scale-[0.97]'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
         >
           <ShoppingCart size={14} />
-          {added ? t('card_added') : t('card_addToCart')}
+          {added ? t('card_added')
+            : needsSize && selectedSize === null ? (lang === 'ar' ? 'اختر الحجم' : 'Select Size')
+            : needsColor && selectedColor === null ? (lang === 'ar' ? 'اختر اللون' : 'Select Color')
+            : t('card_addToCart')}
         </button>
       </div>
     </div>
@@ -246,7 +322,7 @@ export default function HomePage() {
   const currentCity        = cities.find((c) => c.name_ar === currentCityAr) ?? { name_ar: currentCityAr, name_en: currentCityAr };
   const currentCityDisplay = lang === 'ar' ? currentCity.name_ar : currentCity.name_en;
 
-  const handleAddToCart = (product) => addItem(product);
+  const handleAddToCart = (product, qty = 1, meta = {}) => addItem(product, qty, meta);
 
   const { perishableInCity, nationwideProducts } = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -424,75 +500,71 @@ export default function HomePage() {
       </header>
 
       {/* ════════════════════ HERO ════════════════════ */}
-      <section className="pt-[104px] bg-gradient-to-bl from-blue-950 via-blue-900 to-blue-800 overflow-hidden relative">
-        <div className="absolute -top-20 -left-20 w-80 h-80 bg-emerald-500 rounded-full opacity-10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-16 -right-16 w-96 h-96 bg-blue-400 rounded-full opacity-[0.15] blur-3xl pointer-events-none" />
+      <section
+        className="pt-[104px] overflow-hidden relative min-h-[560px] md:min-h-[620px] flex items-center bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: `url(${heroHouse})`,
+          backgroundSize: '100% auto',
+        }}
+      >
+        {/* Dark overlay */}
+<div className="absolute inset-0 z-0 pointer-events-none" style={{ background: 'rgba(10,20,60,0.38)' }} />
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24">
-          <div className="flex flex-col-reverse md:flex-row items-center gap-12 md:gap-16">
+{/* شلنا سطر الـ style من هنا عشان ما يغبش الصندوق كامل */}
+<div className={`relative z-10 w-full max-w-4xl px-4 sm:px-6 py-16 md:py-24 text-center flex flex-col items-center ${lang === 'ar' ? 'mr-[8%] ml-auto' : 'ml-[8%] mr-auto'}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+  
+  {/* 🎯 هذه هي دائرة التغبيش الجديدة (تقدر تتحكم فيها من هنا) */}
+  <div 
+    className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[-1] rounded-full pointer-events-none"
+    style={{
+      width: '800px', // 1. التحكم بالحجم (العرض)
+      height: '800px', // 2. التحكم بالحجم (الطول - خله نفس العرض عشان تصير دائرة)
+      
+      // 3. التحكم باللون: استخدمنا تدرج دائري يبدأ بلون أزرق غامق بالمنتصف ويختفي بالأطراف
+      background: 'radial-gradient(circle, rgba(10,20,60,0.6) 0%, rgba(10,20,60,0) 70%)',
+      
+      // 4. التحكم بقوة الغباش (الـ Blur)
+      backdropFilter: 'blur(5px)',
+      WebkitBackdropFilter: 'blur(5px)',
+    }}
+  />
 
-            {/* Illustration */}
-            <div className="flex-1 flex justify-center md:justify-start">
-              <div className="relative w-64 h-64 md:w-[340px] md:h-[340px]">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/30 to-blue-500/30 rounded-full blur-2xl" />
-                <div className="absolute inset-5 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20 shadow-inner">
-                  <div className="grid grid-cols-2 gap-3 p-4">
-                    {[
-                      { emoji: '🍯', bg: 'bg-amber-50',  label: t('hero_item1') },
-                      { emoji: '🧆', bg: 'bg-orange-50', label: t('hero_item2') },
-                      { emoji: '🧶', bg: 'bg-blue-50',   label: t('hero_item3') },
-                      { emoji: '🌿', bg: 'bg-green-50',  label: t('hero_item4') },
-                    ].map((item) => (
-                      <div key={item.label} className={`${item.bg} rounded-2xl p-3.5 flex flex-col items-center gap-1.5 shadow-sm hover:scale-105 transition-transform duration-200 cursor-default`}>
-                        <span className="text-3xl">{item.emoji}</span>
-                        <span className="text-[10px] font-bold text-gray-700 whitespace-nowrap text-center">{item.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+  <span className="inline-flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 rounded-full px-4 py-1.5 text-sm font-semibold mb-7">
+    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+    {t('hero_badge')}
+  </span>
+  <h1 className="text-4xl md:text-5xl lg:text-[3.4rem] font-extrabold leading-[1.15] mb-5 text-white">
+    {t('hero_title1')}
+    <br />
+    <span className="text-emerald-400">{t('hero_title2')}</span>
+  </h1>
+  <p className="text-blue-100 text-base md:text-lg leading-relaxed mb-8 max-w-xl mx-auto">
+    {t('hero_subtitle')}
+  </p>
+  <div className="flex flex-wrap gap-3 justify-center">
+    <button className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-bold px-8 py-3.5 rounded-2xl transition-all duration-200 shadow-lg shadow-emerald-900/30 flex items-center gap-2">
+      {t('hero_shopNow')}
+      <ChevronBack size={17} />
+    </button>
+    <Link to="/login" className="bg-white/10 hover:bg-white/[0.18] border border-white/20 text-white font-semibold px-8 py-3.5 rounded-2xl transition-all duration-200">
+      {t('hero_joinFamily')}
+    </Link>
+  </div>
+  <div className="flex flex-wrap gap-10 mt-11 pt-8 border-t border-white/10 justify-center w-full">
+    {[
+      { val: t('hero_stat1_val'), label: t('hero_stat1_label') },
+      { val: t('hero_stat2_val'), label: t('hero_stat2_label') },
+      { val: t('hero_stat3_val'), label: t('hero_stat3_label') },
+    ].map((s) => (
+      <div key={s.label}>
+        <div className="text-[1.75rem] font-extrabold leading-none text-white">{s.val}</div>
+        <div className="text-blue-300/80 text-sm mt-1.5">{s.label}</div>
+      </div>
+    ))}
+  </div>
+</div>
 
-            {/* Text */}
-            <div className="flex-1 text-white">
-              <span className="inline-flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 rounded-full px-4 py-1.5 text-sm font-semibold mb-7">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {t('hero_badge')}
-              </span>
-              <h1 className="text-4xl md:text-5xl lg:text-[3.4rem] font-extrabold leading-[1.15] mb-5">
-                {t('hero_title1')}
-                <br />
-                <span className="text-emerald-400">{t('hero_title2')}</span>
-              </h1>
-              <p className="text-blue-200 text-base md:text-lg leading-relaxed mb-8 max-w-md">
-                {t('hero_subtitle')}
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <button className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-bold px-8 py-3.5 rounded-2xl transition-all duration-200 shadow-lg shadow-emerald-900/30 flex items-center gap-2">
-                  {t('hero_shopNow')}
-                  <ChevronBack size={17} />
-                </button>
-                <Link to="/login" className="bg-white/10 hover:bg-white/[0.18] border border-white/20 text-white font-semibold px-8 py-3.5 rounded-2xl transition-all duration-200">
-                  {t('hero_joinFamily')}
-                </Link>
-              </div>
-              <div className="flex flex-wrap gap-10 mt-11 pt-8 border-t border-white/10">
-                {[
-                  { val: t('hero_stat1_val'), label: t('hero_stat1_label') },
-                  { val: t('hero_stat2_val'), label: t('hero_stat2_label') },
-                  { val: t('hero_stat3_val'), label: t('hero_stat3_label') },
-                ].map((s) => (
-                  <div key={s.label}>
-                    <div className="text-[1.75rem] font-extrabold leading-none">{s.val}</div>
-                    <div className="text-blue-300/80 text-sm mt-1.5">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative h-14 overflow-hidden">
+        <div className="absolute bottom-0 left-0 right-0 h-14 overflow-hidden z-10">
           <svg viewBox="0 0 1440 56" className="absolute bottom-0 w-full" preserveAspectRatio="none">
             <path d="M0,28 C240,56 480,0 720,28 C960,56 1200,0 1440,28 L1440,56 L0,56 Z" fill="#f9fafb" />
           </svg>

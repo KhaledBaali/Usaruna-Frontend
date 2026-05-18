@@ -453,6 +453,33 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Stamp producer_id on each order_item so sellers see it in their dashboard
+    const orderId = rpcData?.order_id ?? null;
+    const resolveOrderId = async () => {
+      if (orderId) return orderId;
+      const { data } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('order_number', num)
+        .single();
+      return data?.id ?? null;
+    };
+
+    const resolvedOrderId = await resolveOrderId();
+    if (resolvedOrderId) {
+      await Promise.all(
+        items
+          .filter((i) => i.producerUserId)
+          .map((i) =>
+            supabase
+              .from('order_items')
+              .update({ producer_id: i.producerUserId })
+              .eq('order_id', resolvedOrderId)
+              .eq('product_id', i.id)
+          )
+      );
+    }
+
     // RPC succeeded — cart was cleared server-side; clear local state too
     clearCart();
     setOrderNum(rpcData?.order_number ?? num);

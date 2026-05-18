@@ -89,15 +89,19 @@ function normaliseProduct(row) {
     sellerCity:    sellerCityAr,
     sellerCityEn:  sellerCityEn,
     whatsapp:      p?.whatsapp       ?? row.whatsapp,
+    sellerPhone:   p?.phone          ?? null,
+    sellerEmail:   p?.email          ?? null,
     partnerSince:  p?.partner_since  ?? row.partnerSince,
     weight:        row.weight        ?? null,
     prepTime:      row.prep_time     ?? null,
+    isReturnable:  row.is_returnable ?? false,
     rating:        row.rating        ?? 0,
     reviews:       row.reviews       ?? 0,
     deliveryTypes,
     sizes,
     colors,
-    producerUserId: p?.user_id ?? null,
+    producerUserId:   p?.user_id ?? null,
+    producerProfileId: p?.id     ?? null,
   };
 }
 
@@ -233,10 +237,9 @@ export async function deleteReview(reviewId) {
   } catch (err) { return { ok: false, error: err?.message }; }
 }
 
-export async function replyToReview(reviewId, reply, replyEn = null) {
+export async function replyToReview(reviewId, reply) {
   try {
-    const update = { seller_reply: reply, seller_reply_at: new Date().toISOString() };
-    if (replyEn !== null) update.seller_reply_en = replyEn;
+    const update = { seller_reply: reply, seller_reply_en: null, seller_reply_at: new Date().toISOString() };
     const { error } = await supabase.from('reviews').update(update).eq('id', reviewId);
     if (error) throw error;
     return true;

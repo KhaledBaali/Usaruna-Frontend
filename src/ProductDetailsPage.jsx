@@ -151,11 +151,13 @@ export default function ProductDetailsPage() {
   const [translatingComments, setTranslatingComments] = useState({});
 
   // Seller reply state
-  const [replyDrafts,       setReplyDrafts]       = useState({});
-  const [replyTranslations, setReplyTranslations] = useState({});
-  const [translatingReply,  setTranslatingReply]  = useState({});
-  const [replyEditorOpen,   setReplyEditorOpen]   = useState(new Set());
-  const [replySubmitting,   setReplySubmitting]   = useState({});
+  const [replyDrafts,          setReplyDrafts]          = useState({});
+  const [replyTranslations,    setReplyTranslations]    = useState({});
+  const [translatingReply,     setTranslatingReply]     = useState({});
+  const [replyEditorOpen,      setReplyEditorOpen]      = useState(new Set());
+  const [replySubmitting,      setReplySubmitting]      = useState({});
+  const [translatedReplies,    setTranslatedReplies]    = useState({});
+  const [translatingReplies,   setTranslatingReplies]   = useState({});
 
   // Questions state
   const [questionText,          setQuestionText]          = useState('');
@@ -175,8 +177,9 @@ export default function ProductDetailsPage() {
   const [answerSubmitting,      setAnswerSubmitting]      = useState({});
   const [smartAnswerLoading,    setSmartAnswerLoading]    = useState({});
 
-  const [customerLocation, setCustomerLocation] = useState(null);
-  const [showAbout,        setShowAbout]        = useState(false);
+  const [customerLocation,   setCustomerLocation]   = useState(null);
+  const [showAbout,          setShowAbout]          = useState(false);
+  const [showContactSeller,  setShowContactSeller]  = useState(false);
 
   const prepTimeLabel = (() => {
     const m = product?.prepTime;
@@ -299,10 +302,14 @@ export default function ProductDetailsPage() {
       return;
     }
     const cappedQty = Math.min(quantity, product.stock ?? quantity);
+    const chosenSize  = selectedSize  !== null ? product.sizes?.find((s) => s.id === selectedSize)  ?? null : null;
+    const chosenColor = selectedColor !== null ? product.colors?.find((c) => c.id === selectedColor) ?? null : null;
     addItem(product, cappedQty, {
       deliveryOption:   deliveryOption,
       deliveryLocation: customerLocation,
       deliveryPrice:    deliveryPrice,
+      chosenSize,
+      chosenColor,
     });
     setAdded(true);
     showToast(`${t('toast_addedCart')} (${cappedQty})`, '🛒', 'cart');
@@ -391,6 +398,24 @@ export default function ProductDetailsPage() {
     }
   };
 
+  const handleTranslateReply = async (reviewId, text) => {
+    if (translatedReplies[reviewId]) {
+      setTranslatedReplies((prev) => { const n = { ...prev }; delete n[reviewId]; return n; });
+      return;
+    }
+    setTranslatingReplies((prev) => ({ ...prev, [reviewId]: true }));
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`
+      );
+      const data = await res.json();
+      const translated = data[0].map((chunk) => chunk[0]).join('');
+      setTranslatedReplies((prev) => ({ ...prev, [reviewId]: translated }));
+    } catch { /* silently fail */ } finally {
+      setTranslatingReplies((prev) => ({ ...prev, [reviewId]: false }));
+    }
+  };
+
   const handleTranslate = async (review) => {
     if (translatedComments[review.id]) {
       setTranslatedComments((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
@@ -447,12 +472,11 @@ export default function ProductDetailsPage() {
     const text = (replyDrafts[reviewId] ?? '').trim();
     if (!text) return;
     setReplySubmitting((prev) => ({ ...prev, [reviewId]: true }));
-    const translatedText = replyTranslations[reviewId] ?? null;
-    const ok = await replyToReview(reviewId, text, translatedText);
+    const ok = await replyToReview(reviewId, text);
     if (ok) {
       setReviews((prev) => prev.map((r) =>
         r.id === reviewId
-          ? { ...r, seller_reply: text, seller_reply_en: translatedText, seller_reply_at: new Date().toISOString() }
+          ? { ...r, seller_reply: text, seller_reply_en: null, seller_reply_at: new Date().toISOString() }
           : r
       ));
       setReplyEditorOpen((prev) => { const n = new Set(prev); n.delete(reviewId); return n; });
@@ -873,7 +897,7 @@ export default function ProductDetailsPage() {
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-gray-800 text-sm">{t('pd_sizeLabel')}</h3>
-                    {!selectedSize && (
+                    {selectedSize === null && (
                       <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                         {lang === 'ar' ? 'مطلوب' : 'Required'}
                       </span>
@@ -910,7 +934,7 @@ export default function ProductDetailsPage() {
                     <h3 className="font-bold text-gray-800 text-sm">
                       {product.isPerishable ? t('pd_flavorLabel') : t('pd_packagingLabel')}
                     </h3>
-                    {!selectedColor && (
+                    {selectedColor === null && (
                       <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                         {lang === 'ar' ? 'مطلوب' : 'Required'}
                       </span>
@@ -980,6 +1004,27 @@ export default function ProductDetailsPage() {
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockLevel === 'ok' ? 'bg-emerald-500' : stockLevel === 'out' ? 'bg-red-500' : 'bg-amber-500'}`} />
               {stockInfo.label}
             </span>
+
+            {/* Return policy */}
+            {product.isReturnable ? (
+              <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3">
+                <RotateCcw size={15} className="text-emerald-600 shrink-0" />
+                <p className="text-xs font-semibold text-emerald-800">
+                  {lang === 'ar'
+                    ? '✅ قابل للإرجاع — يمكن إرجاع المنتج بشرط أن يكون بحالته الأصلية دون استخدام'
+                    : '✅ Returnable — product can be returned as long as it is unused and in its original condition'}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                <XCircle size={15} className="text-red-500 shrink-0" />
+                <p className="text-xs font-semibold text-red-700">
+                  {lang === 'ar'
+                    ? '🚫 غير قابل للإرجاع — يرجى مراجعة جميع تفاصيل المنتج بعناية قبل الشراء'
+                    : '🚫 Not returnable — please review all product details carefully before purchasing'}
+                </p>
+              </div>
+            )}
 
             {/* Prep time */}
             {prepTimeLabel && (
@@ -1121,9 +1166,9 @@ export default function ProductDetailsPage() {
                   <ShoppingCart size={15} />
                   {stockLevel === 'out'
                     ? t('btn_outOfStock')
-                    : needsSize && !selectedSize
+                    : needsSize && selectedSize === null
                       ? (lang === 'ar' ? 'اختر الحجم أولاً' : 'Select Size First')
-                      : needsColor && !selectedColor
+                      : needsColor && selectedColor === null
                         ? (lang === 'ar' ? 'اختر الخيار أولاً' : 'Select Option First')
                         : !deliveryOption
                           ? (lang === 'ar' ? 'اختر طريقة التوصيل' : 'Select Delivery')
@@ -1156,29 +1201,6 @@ export default function ProductDetailsPage() {
           </section>
         )}
 
-        {/* ════════ REFUND POLICY ════════ */}
-        <section className="mt-6 bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-          <h2 className="font-extrabold text-gray-800 mb-4 text-base flex items-center gap-2">
-            <span className="w-1 h-5 bg-violet-500 rounded-full" />
-            {t('pd_refundTitle')}
-          </h2>
-          <div className={`flex items-start gap-4 p-4 rounded-2xl border ${product.isRefundable ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${product.isRefundable ? 'bg-emerald-100' : 'bg-red-100'}`}>
-              {product.isRefundable
-                ? <RotateCcw size={18} className="text-emerald-600" />
-                : <XCircle   size={18} className="text-red-500"     />
-              }
-            </div>
-            <div>
-              <p className={`font-bold text-sm ${product.isRefundable ? 'text-emerald-800' : 'text-red-700'}`}>
-                {product.isRefundable ? t('pd_refundable') : t('pd_notRefundable')}
-              </p>
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                {px(product.refundPolicy, product.refundPolicyEn)}
-              </p>
-            </div>
-          </div>
-        </section>
 
         {/* ════════ SELLER CARD ════════ */}
         <section className="mt-6 bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
@@ -1210,7 +1232,7 @@ export default function ProductDetailsPage() {
                 )}
               </div>
             </div>
-            <button onClick={() => showToast(t('toast_contacting'), '📞', 'info')}
+            <button onClick={() => setShowContactSeller(true)}
               className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-5 py-2.5 rounded-2xl text-sm transition-colors shrink-0"
             >
               <Phone size={14} />
@@ -1399,23 +1421,11 @@ export default function ProductDetailsPage() {
                   <div className="mt-3 space-y-2">
                     <textarea
                       value={replyDrafts[review.id] ?? ''}
-                      onChange={(e) => {
-                        setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }));
-                        setReplyTranslations((prev) => { const n = { ...prev }; delete n[review.id]; return n; });
-                      }}
+                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [review.id]: e.target.value }))}
                       rows={3}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
                       placeholder={lang === 'ar' ? 'اكتب ردك هنا...' : 'Write your reply here...'}
                     />
-                    {/* Translation preview */}
-                    {replyTranslations[review.id] && (
-                      <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl">
-                        <span className="text-[10px] font-bold text-sky-600 block mb-1">
-                          {lang === 'ar' ? 'الترجمة (EN) — ستُحفظ وتُعرض للمتصفحين بالإنجليزية' : 'Translation (AR) — saved and shown to Arabic viewers'}
-                        </span>
-                        <p className="text-xs text-gray-700 leading-relaxed">{replyTranslations[review.id]}</p>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* AI suggest */}
                       <button onClick={() => handleSmartReply(review)} disabled={smartReplyLoading[review.id]}
@@ -1424,16 +1434,6 @@ export default function ProductDetailsPage() {
                           ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري توليد الرد...' : 'Generating...'}</>
                           : <><Wand2 size={11} />{lang === 'ar' ? 'اقتراح رد بالذكاء الاصطناعي' : 'AI Suggest'}</>}
                       </button>
-                      {/* Translate draft to other language */}
-                      <button
-                        onClick={() => handleTranslateReplyDraft(review.id)}
-                        disabled={translatingReply[review.id] || !(replyDrafts[review.id] ?? '').trim()}
-                        className="flex items-center gap-1.5 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
-                      >
-                        {translatingReply[review.id]
-                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Translating...'}</>
-                          : <><Globe size={11} />{lang === 'ar' ? 'ترجمة إلى EN' : 'Translate to AR'}</>}
-                      </button>
                       {/* Post reply */}
                       <button onClick={() => handleSubmitReply(review.id)}
                         disabled={replySubmitting[review.id] || !(replyDrafts[review.id] ?? '').trim()}
@@ -1441,7 +1441,7 @@ export default function ProductDetailsPage() {
                         {replySubmitting[review.id] && <Loader2 size={11} className="animate-spin" />}
                         {lang === 'ar' ? 'نشر الرد' : 'Post Reply'}
                       </button>
-                      <button onClick={() => { closeReplyEditor(review.id); setReplyTranslations((prev) => { const n={...prev}; delete n[review.id]; return n; }); }}
+                      <button onClick={() => closeReplyEditor(review.id)}
                         className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-xl transition-colors">
                         {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                       </button>
@@ -1450,10 +1450,8 @@ export default function ProductDetailsPage() {
                 )}
 
                 {/* Seller reply display — shows the right language version */}
-                {(review.seller_reply || review.seller_reply_en) && (() => {
-                  const displayReply = lang === 'ar'
-                    ? (review.seller_reply || review.seller_reply_en)
-                    : (review.seller_reply_en || review.seller_reply);
+                {review.seller_reply && (() => {
+                  const displayReply = review.seller_reply;
                   return (
                     <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
                       <div className="flex items-center justify-between mb-1.5">
@@ -1462,7 +1460,7 @@ export default function ProductDetailsPage() {
                         </span>
                         {isSeller && (
                           <div className="flex items-center gap-3">
-                            <button onClick={() => openReplyEditor(review.id, review.seller_reply || '')}
+                            <button onClick={() => openReplyEditor(review.id, review.seller_reply)}
                               className="text-[10px] font-bold text-blue-400 hover:text-blue-700 transition-colors">
                               {lang === 'ar' ? 'تعديل' : 'Edit'}
                             </button>
@@ -1474,6 +1472,28 @@ export default function ProductDetailsPage() {
                         )}
                       </div>
                       <p className="text-xs text-gray-700 leading-relaxed">{displayReply}</p>
+                      {translatedReplies[review.id] && (
+                        <div className="mt-2 pt-2 border-t border-blue-100">
+                          <p className="text-xs text-gray-600 leading-relaxed">{translatedReplies[review.id]}</p>
+                          <span className="text-[10px] text-blue-400 flex items-center gap-1 mt-1">
+                            <Globe size={9} /> Google Translate
+                          </span>
+                        </div>
+                      )}
+                      {!isSeller && (
+                        <button
+                          onClick={() => handleTranslateReply(review.id, displayReply)}
+                          disabled={translatingReplies[review.id]}
+                          className="flex items-center gap-1 mt-2 text-[10px] font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                        >
+                          {translatingReplies[review.id]
+                            ? <><Loader2 size={10} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                            : translatedReplies[review.id]
+                              ? <><Globe size={10} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                              : <><Globe size={10} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                          }
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
@@ -1627,14 +1647,6 @@ export default function ProductDetailsPage() {
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
                       placeholder={lang === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}
                     />
-                    {answerTranslations[question.id] && (
-                      <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl">
-                        <span className="text-[10px] font-bold text-sky-600 block mb-1">
-                          {lang === 'ar' ? 'الترجمة (EN) — ستُحفظ وتُعرض للمتصفحين بالإنجليزية' : 'Translation (AR) — saved and shown to Arabic viewers'}
-                        </span>
-                        <p className="text-xs text-gray-700 leading-relaxed">{answerTranslations[question.id]}</p>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <button onClick={() => handleSmartAnswer(question)} disabled={smartAnswerLoading[question.id]}
                         className="flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
@@ -1642,22 +1654,13 @@ export default function ProductDetailsPage() {
                           ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري توليد الإجابة...' : 'Generating...'}</>
                           : <><Wand2 size={11} />{lang === 'ar' ? 'اقتراح إجابة بالذكاء الاصطناعي' : 'AI Suggest'}</>}
                       </button>
-                      <button
-                        onClick={() => handleTranslateAnswerDraft(question.id)}
-                        disabled={translatingAnswer[question.id] || !(answerDrafts[question.id] ?? '').trim()}
-                        className="flex items-center gap-1.5 text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50"
-                      >
-                        {translatingAnswer[question.id]
-                          ? <><Loader2 size={11} className="animate-spin" />{lang === 'ar' ? 'جاري...' : 'Translating...'}</>
-                          : <><Globe size={11} />{lang === 'ar' ? 'ترجمة إلى EN' : 'Translate to AR'}</>}
-                      </button>
                       <button onClick={() => handleSubmitAnswer(question.id)}
                         disabled={answerSubmitting[question.id] || !(answerDrafts[question.id] ?? '').trim()}
                         className="flex items-center gap-1.5 text-xs font-bold text-white bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-50">
                         {answerSubmitting[question.id] && <Loader2 size={11} className="animate-spin" />}
                         {lang === 'ar' ? 'نشر الإجابة' : 'Post Answer'}
                       </button>
-                      <button onClick={() => { closeAnswerEditor(question.id); setAnswerTranslations((prev) => { const n={...prev}; delete n[question.id]; return n; }); }}
+                      <button onClick={() => closeAnswerEditor(question.id)}
                         className="text-xs font-bold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-xl transition-colors">
                         {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                       </button>
@@ -1670,6 +1673,7 @@ export default function ProductDetailsPage() {
                   const displayAnswer = lang === 'ar'
                     ? (question.seller_answer || question.seller_answer_en)
                     : (question.seller_answer_en || question.seller_answer);
+                  const needsTranslate = lang === 'ar' ? !question.seller_answer : !question.seller_answer_en;
                   return (
                     <div className="mt-3 p-3 bg-sky-50 border border-sky-100 rounded-xl">
                       <div className="flex items-center justify-between mb-1.5">
@@ -1690,6 +1694,28 @@ export default function ProductDetailsPage() {
                         )}
                       </div>
                       <p className="text-xs text-gray-700 leading-relaxed">{displayAnswer}</p>
+                      {translatedReplies[`q_${question.id}`] && (
+                        <div className="mt-2 pt-2 border-t border-sky-100">
+                          <p className="text-xs text-gray-600 leading-relaxed">{translatedReplies[`q_${question.id}`]}</p>
+                          <span className="text-[10px] text-sky-400 flex items-center gap-1 mt-1">
+                            <Globe size={9} /> Google Translate
+                          </span>
+                        </div>
+                      )}
+                      {needsTranslate && (
+                        <button
+                          onClick={() => handleTranslateReply(`q_${question.id}`, displayAnswer)}
+                          disabled={translatingReplies[`q_${question.id}`]}
+                          className="flex items-center gap-1 mt-2 text-[10px] font-semibold text-sky-500 hover:text-sky-700 transition-colors disabled:opacity-50"
+                        >
+                          {translatingReplies[`q_${question.id}`]
+                            ? <><Loader2 size={10} className="animate-spin" />{lang === 'ar' ? 'جاري الترجمة...' : 'Translating...'}</>
+                            : translatedReplies[`q_${question.id}`]
+                              ? <><Globe size={10} />{lang === 'ar' ? 'إخفاء الترجمة' : 'Hide translation'}</>
+                              : <><Globe size={10} />{lang === 'ar' ? 'ترجمة' : 'Translate'}</>
+                          }
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
@@ -1850,9 +1876,9 @@ export default function ProductDetailsPage() {
             <ShoppingCart size={15} />
             {stockLevel === 'out'
               ? t('btn_outOfStock')
-              : needsSize && !selectedSize
+              : needsSize && selectedSize === null
                 ? (lang === 'ar' ? 'اختر الحجم أولاً' : 'Select Size First')
-                : needsColor && !selectedColor
+                : needsColor && selectedColor === null
                   ? (lang === 'ar' ? 'اختر الخيار أولاً' : 'Select Option First')
                   : !deliveryOption
                     ? (lang === 'ar' ? 'اختر التوصيل' : 'Select Delivery')
@@ -1864,6 +1890,94 @@ export default function ProductDetailsPage() {
           </button>
         </div>
       </div>
+
+      {/* Contact Seller modal */}
+      {showContactSeller && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowContactSeller(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowContactSeller(false)} className="absolute top-4 end-4 text-gray-400 hover:text-gray-600 transition-colors">
+              <X size={20} />
+            </button>
+            <h3 className="font-extrabold text-gray-900 text-base mb-4 flex items-center gap-2">
+              <Phone size={16} className="text-blue-700 shrink-0" />
+              {lang === 'ar' ? 'معلومات التواصل' : 'Contact Info'}
+            </h3>
+            <div className="space-y-3">
+              {/* Family name */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                  <Store size={14} className="text-blue-700" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                    {lang === 'ar' ? 'اسم الأسرة' : 'Family Name'}
+                  </p>
+                  <p className="text-sm font-bold text-gray-800 truncate">
+                    {lang === 'ar' ? product.family : (product.familyEn || product.family)}
+                  </p>
+                </div>
+              </div>
+              {/* Email */}
+              {product.sellerEmail && (
+                <a href={`mailto:${product.sellerEmail}`}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-blue-50 transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                    <Mail size={14} className="text-blue-700" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                      {lang === 'ar' ? 'البريد الإلكتروني' : 'Email'}
+                    </p>
+                    <p className="text-sm font-semibold text-blue-700 group-hover:underline truncate" dir="ltr">
+                      {product.sellerEmail}
+                    </p>
+                  </div>
+                </a>
+              )}
+              {/* Phone */}
+              {(product.sellerPhone || product.whatsapp) && (
+                <a href={`tel:${product.sellerPhone || product.whatsapp}`}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-emerald-50 transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                    <Phone size={14} className="text-emerald-700" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                      {lang === 'ar' ? 'رقم الجوال' : 'Phone'}
+                    </p>
+                    <p className="text-sm font-semibold text-emerald-700 group-hover:underline truncate" dir="ltr">
+                      {product.sellerPhone || product.whatsapp}
+                    </p>
+                  </div>
+                </a>
+              )}
+              {/* WhatsApp — only if separate from phone */}
+              {product.whatsapp && product.sellerPhone && product.whatsapp !== product.sellerPhone && (
+                <a href={`https://wa.me/${product.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-emerald-50 transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700 font-bold text-sm">
+                    W
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">WhatsApp</p>
+                    <p className="text-sm font-semibold text-emerald-700 group-hover:underline truncate" dir="ltr">
+                      {product.whatsapp}
+                    </p>
+                  </div>
+                </a>
+              )}
+              {!product.sellerEmail && !product.sellerPhone && !product.whatsapp && (
+                <p className="text-sm text-gray-400 text-center py-3">
+                  {lang === 'ar' ? 'لا توجد معلومات تواصل متاحة' : 'No contact info available'}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* About Usaruna modal */}
       {showAbout && (

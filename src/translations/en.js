@@ -110,8 +110,8 @@ export default {
   // ─── Product details — price ─────────────────────────────────────────────────
   pd_save:           'Save',
   pd_sizeLabel:      'Size',
-  pd_flavorLabel:    'Flavor',
-  pd_packagingLabel: 'Packaging Color / Type',
+  pd_flavorLabel:    'Color',
+  pd_packagingLabel: 'Color / Type',
   pd_sizeAdj_suffix: 'SAR (size)',
 
   // ─── Product details — meta ───────────────────────────────────────────────────

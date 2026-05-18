@@ -116,6 +116,23 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty, onUpdateMeta })
           {family && city && <span>{family}</span>}
         </p>
 
+        {/* Size / Color choices */}
+        {(item.chosenSize || item.chosenColor) && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {item.chosenSize && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5">
+                📐 {lang === 'ar' ? item.chosenSize.label : (item.chosenSize.labelEn || item.chosenSize.label)}
+              </span>
+            )}
+            {item.chosenColor && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-full px-2.5 py-0.5">
+                <span className="w-3 h-3 rounded-full border border-gray-300 shrink-0" style={{ background: item.chosenColor.hex }} />
+                {lang === 'ar' ? item.chosenColor.label : (item.chosenColor.labelEn || item.chosenColor.label)}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* No delivery chosen yet: show selector */}
         {!item.deliveryOption && item.deliveryTypes?.length > 0 && (
           <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl">
