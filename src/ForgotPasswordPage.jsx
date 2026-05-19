@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, ArrowRight, Globe, Check, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from './supabase';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 
 const T = {
   ar: {

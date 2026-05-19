@@ -12,7 +12,8 @@ import {
 import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
 import { enhanceDescription } from './lib/aiApi';
-import logo from './assets/logo.png';
+import { parseDeliveryTypes, serializeDeliveryTypes, toMinutes, fromMinutes } from './lib/utils';
+const logo = '/logo.webp';
 
 // ─── Translations ──────────────────────────────────────────────────────────────
 
@@ -363,26 +364,19 @@ function Toast({ toast }) {
 function BarChart({ data, height = 100 }) {
   if (!data?.length) return null;
   const max = Math.max(...data.map((d) => d.value), 1);
-  const barW = 100 / data.length;
+  const chartH = height - 28;
   return (
-    <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
-      {data.map((d, i) => {
-        const barH = (d.value / max) * (height - 20);
-        const x = i * barW + barW * 0.15;
-        const w = barW * 0.7;
-        const y = height - 20 - barH;
-        return (
-          <g key={i}>
-            <rect x={x} y={y} width={w} height={barH} rx="2"
-              className="fill-blue-500 opacity-80 hover:opacity-100 transition-opacity" />
-            <text x={x + w / 2} y={height - 5} textAnchor="middle"
-              className="fill-gray-400" style={{ fontSize: 5 }}>
-              {d.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div style={{ height }} className="flex items-end gap-1.5">
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1.5">
+          <div
+            className="w-full bg-blue-400 rounded-t transition-all duration-500"
+            style={{ height: d.value ? `${(d.value / max) * chartH}px` : '3px', opacity: d.value ? 1 : 0.2 }}
+          />
+          <span className="text-[10px] text-gray-400 leading-none select-none">{d.label}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -493,37 +487,61 @@ function OverviewTab({ profile, onNavigate, t, cities }) {
 // ─── Sales tab ─────────────────────────────────────────────────────────────────
 
 function SalesTab({ profile, t }) {
-  const [period,     setPeriod]     = useState('month');
-  const [reviews,    setReviews]    = useState([]);
-  const [loading,    setLoading]    = useState(true);
+  const [period,      setPeriod]     = useState('month');
+  const [reviews,     setReviews]    = useState([]);
+  const [orderItems,  setOrderItems] = useState([]);
+  const [loading,     setLoading]    = useState(true);
 
   useEffect(() => {
+    if (!profile?.id) return;
     setLoading(true);
-    supabase
+
+    const fetchReviews = supabase
       .from('products')
       .select('id')
       .eq('producer_id', profile.id)
       .then(async ({ data: prods }) => {
-        if (!prods?.length) { setLoading(false); return; }
+        if (!prods?.length) return [];
         const ids = prods.map((p) => p.id);
         const { data } = await supabase
           .from('reviews')
           .select('rating, created_at')
           .in('product_id', ids)
           .order('created_at', { ascending: true });
-        setReviews(data ?? []);
-        setLoading(false);
+        return data ?? [];
       });
-  }, [profile.id]);
+
+    const fetchOrders = supabase
+      .from('order_items')
+      .select('price_at_purchase, quantity, order_id, orders(status, created_at)')
+      .eq('producer_id', profile.user_id)
+      .then(({ data }) => data ?? []);
+
+    Promise.all([fetchReviews, fetchOrders]).then(([reviewData, orderData]) => {
+      setReviews(reviewData);
+      setOrderItems(orderData);
+      setLoading(false);
+    });
+  }, [profile?.id, profile?.user_id]);
 
   const now = new Date();
-  const filtered = reviews.filter((r) => {
-    const d = new Date(r.created_at);
-    if (period === 'week')  return now - d < 7  * 86400000;
-    if (period === 'month') return now - d < 30 * 86400000;
+  const inPeriod = (dateStr) => {
+    const d = new Date(dateStr);
+    if (period === 'week')  return now - d < 7   * 86400000;
+    if (period === 'month') return now - d < 30  * 86400000;
     if (period === 'year')  return now - d < 365 * 86400000;
     return true;
+  };
+
+  const filtered = reviews.filter((r) => inPeriod(r.created_at));
+
+  const filteredOrders = orderItems.filter((i) => {
+    const date = i.orders?.created_at ?? i.created_at;
+    return date && inPeriod(date) && i.orders?.status !== 'cancelled';
   });
+
+  const revenue    = filteredOrders.reduce((s, i) => s + (i.price_at_purchase ?? 0) * (i.quantity ?? 1), 0);
+  const orderCount = new Set(filteredOrders.map((i) => i.order_id)).size;
 
   const avgRating = filtered.length
     ? (filtered.reduce((s, r) => s + r.rating, 0) / filtered.length).toFixed(1)
@@ -534,7 +552,7 @@ function SalesTab({ profile, t }) {
     count: filtered.filter((r) => r.rating === star).length,
   }));
 
-  const chartData = ratingDist.reverse().map((d) => ({
+  const chartData = ratingDist.slice().reverse().map((d) => ({
     label: `${d.star}★`,
     value: d.count,
   }));
@@ -575,11 +593,15 @@ function SalesTab({ profile, t }) {
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-xs text-gray-400 mb-1">{t.sales_revenue}</p>
-              <p className="text-2xl font-extrabold text-gray-800">{t.noData}</p>
+              <p className="text-2xl font-extrabold text-gray-800">
+                {orderCount > 0 ? `${revenue.toFixed(0)} ${t.ord_sar}` : t.noData}
+              </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-xs text-gray-400 mb-1">{t.sales_orders}</p>
-              <p className="text-2xl font-extrabold text-gray-800">{t.noData}</p>
+              <p className="text-2xl font-extrabold text-gray-800">
+                {orderCount > 0 ? orderCount : t.noData}
+              </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <p className="text-xs text-gray-400 mb-1">{t.sales_avgRating}</p>
@@ -630,41 +652,13 @@ function SalesTab({ profile, t }) {
   );
 }
 
-// ─── Delivery helpers ──────────────────────────────────────────────────────────
+// ─── Delivery helpers ─────────────────────────────────────────────────────────
+// parseDeliveryTypes, serializeDeliveryTypes, toMinutes, fromMinutes
+// are imported from ./lib/utils
 
-// Parses delivery_type from DB — supports legacy single string and new JSON array.
-// Migrates legacy names: 'fast'→'seller_delivery', 'nationwide'→'third_party'
-function parseDeliveryTypes(p) {
-  const dt = p?.delivery_type;
-  const migrate = (d) =>
-    d === 'fast' ? 'seller_delivery' : d === 'nationwide' ? 'third_party' : d === 'local' ? 'seller_delivery' : d;
-
-  if (!dt) return p?.is_perishable ? ['seller_delivery'] : ['third_party'];
-  try {
-    const arr = JSON.parse(dt);
-    if (Array.isArray(arr) && arr.length > 0) return arr.map(migrate);
-  } catch { /* legacy string fallback below */ }
-  return [migrate(dt)];
-}
-
-// Serialises the delivery types array → stored as JSON string in delivery_type column.
-function serializeDeliveryTypes(arr) {
-  return arr.length === 1 ? arr[0] : JSON.stringify(arr);
-}
-
-// ─── Prep time unit helpers ───────────────────────────────────────────────────
-function toMinutes(value, unit) {
-  const v = parseInt(value) || 0;
-  if (unit === 'hours') return v * 60;
-  if (unit === 'days')  return v * 60 * 24;
-  return v;
-}
-
-function fromMinutes(minutes) {
-  if (!minutes) return { value: '', unit: 'minutes' };
-  if (minutes % (60 * 24) === 0) return { value: String(minutes / (60 * 24)), unit: 'days' };
-  if (minutes % 60 === 0)        return { value: String(minutes / 60),        unit: 'hours' };
-  return { value: String(minutes), unit: 'minutes' };
+// SellerDashboard wrapper: accepts a product object and reads delivery_type + is_perishable
+function parseProductDeliveryTypes(p) {
+  return parseDeliveryTypes(p?.delivery_type, p?.is_perishable);
 }
 
 // ─── DeliveryCheckCard — shared checkbox card for add & edit ──────────────────
@@ -722,7 +716,7 @@ function EditProductModal({ product, t, onClose, onSaved, onDeleted, showToast }
   const _initPrep = fromMinutes(product.prep_time);
   const [prepTime,       setPrepTime]       = useState(_initPrep.value);
   const [prepTimeUnit,   setPrepTimeUnit]   = useState(_initPrep.unit);
-  const [deliveryTypes,  setDeliveryTypes]  = useState(parseDeliveryTypes(product));
+  const [deliveryTypes,  setDeliveryTypes]  = useState(parseProductDeliveryTypes(product));
   const [saving,         setSaving]         = useState(false);
   const [deleting,       setDeleting]       = useState(false);
   const [confirmDelete,  setConfirmDelete]  = useState(false);
@@ -1150,7 +1144,7 @@ function MyProductsTab({ profile, t, showToast }) {
               </p>
               {/* Delivery badges — supports multiple */}
               <div className="flex flex-wrap gap-1 mt-1">
-                {parseDeliveryTypes(p).map((dt) => {
+                {parseProductDeliveryTypes(p).map((dt) => {
                   if (dt === 'pickup') return (
                     <span key="pickup" className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                       <Home size={9} />{t.dir === 'rtl' ? 'استلام شخصي' : 'Pickup'}
@@ -2023,7 +2017,7 @@ export default function SellerDashboard() {
 // ─── Producer Orders Tab ────────────────────────────────────────────────────────
 
 const ORDER_STATUSES = [
-  'pending', 'confirmed', 'processing', 'shipped',
+  'pending', 'confirmed', 'processing', 'shipped', 'delivered',
 ];
 
 const STATUS_META = {
@@ -2049,9 +2043,18 @@ function StatusBadge({ status, lang }) {
 
 function StatusDropdown({ currentStatus, onUpdate, lang, t, disabled = false }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef(null);
   const m = STATUS_META[currentStatus] ?? STATUS_META.pending;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         disabled={disabled}
@@ -2073,7 +2076,7 @@ function StatusDropdown({ currentStatus, onUpdate, lang, t, disabled = false }) 
                 key={s}
                 onClick={() => { setOpen(false); onUpdate(s); }}
                 className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold hover:bg-gray-50 transition-colors
-                  text-${lang === 'ar' ? 'right' : 'left'} ${
+                  ${lang === 'ar' ? 'text-right' : 'text-left'} ${
                     s === currentStatus ? 'text-blue-700 bg-blue-50' : 'text-gray-700'
                   }`}
               >
@@ -2256,7 +2259,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
           className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-gray-50"
         >
           <option value="all">{t.ord_filterAll}</option>
-          {ORDER_STATUSES.filter((s) => s !== 'processing' && s !== 'shipped').map((s) => {
+          {ORDER_STATUSES.map((s) => {
             const sm = STATUS_META[s];
             return <option key={s} value={s}>{lang === 'ar' ? sm.ar : sm.en}</option>;
           })}
@@ -2333,7 +2336,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
           return (
             <div
               key={item.id}
-              className={`bg-white rounded-3xl border-2 shadow-sm transition-all duration-200 overflow-hidden ${sm.card ?? 'border-gray-200'}`}
+              className={`bg-white rounded-3xl border-2 shadow-sm transition-all duration-200 ${sm.card ?? 'border-gray-200'}`}
             >
               {/* ── Card header ── */}
               <div className="px-5 py-4 flex items-center justify-between gap-3 flex-wrap border-b border-gray-50">

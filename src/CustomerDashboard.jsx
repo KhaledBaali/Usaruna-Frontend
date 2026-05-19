@@ -11,7 +11,7 @@ import { useAuth } from './contexts/AuthContext';
 import { useWishlist } from './contexts/WishlistContext';
 import { useCart } from './contexts/CartContext';
 import AccountMenu from './AccountMenu';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 
 // ─── TRANSLATIONS ─────────────────────────────────────────────────────────────
 

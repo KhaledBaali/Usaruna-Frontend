@@ -15,7 +15,7 @@ import { useWishlist } from './contexts/WishlistContext';
 import { fetchProductById, fetchReviews, submitReview, deleteReview, replyToReview, deleteReviewReply, updateHelpfulCount, fetchQuestions, submitQuestion, deleteQuestion, answerQuestion, deleteQuestionAnswer, updateQuestionHelpful } from './lib/api';
 import { summarizeReviews, getSmartReply } from './lib/aiApi';
 import AccountMenu from './AccountMenu';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -677,7 +677,7 @@ export default function ProductDetailsPage() {
     );
   }
 
-  const images         = product.images ?? [product.image_url ?? product.emoji];
+  const images         = product.images?.length ? product.images : [product.image_url ?? product.emoji];
   const relatedProducts = []; // To be fetched dynamically later if needed
 
   const certifications = lang === 'ar'

@@ -12,8 +12,8 @@ import { useWishlist } from './contexts/WishlistContext';
 import { fetchProducts } from './lib/api';
 import { supabase } from './supabase';
 import AccountMenu from './AccountMenu';
-import logo from './assets/logo.png';
-import heroHouse from './assets/hero-house.jpg';
+const logo = '/logo.webp';
+const heroHouse = '/hero-house.jpg';
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 
