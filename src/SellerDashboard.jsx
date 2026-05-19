@@ -1993,7 +1993,8 @@ export default function SellerDashboard() {
     };
     run();
     return () => { cancelled = true; };
-  }, [navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (isChecking) {
     if (dbError) {
@@ -2046,15 +2047,16 @@ function StatusBadge({ status, lang }) {
   );
 }
 
-function StatusDropdown({ currentStatus, onUpdate, lang, t }) {
+function StatusDropdown({ currentStatus, onUpdate, lang, t, disabled = false }) {
   const [open, setOpen] = useState(false);
   const m = STATUS_META[currentStatus] ?? STATUS_META.pending;
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badge} hover:opacity-80 transition-opacity`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${m.badge} hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity`}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${m.dot} shrink-0`} />
         {lang === 'ar' ? m.ar : m.en}
@@ -2111,10 +2113,11 @@ function ProducerOrdersTab({ t, showToast, profile }) {
   const [search,        setSearch]        = useState('');
   const [filterStatus,  setFilterStatus]  = useState('all');
   const [expandedId,    setExpandedId]    = useState(null);
+  const [updatingId,    setUpdatingId]    = useState(null);
 
-  const fetchOrders = useCallback(() => {
+  const fetchOrders = useCallback((showSpinner = false) => {
     if (!profile?.id) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     supabase
       .from('order_items')
       .select('*, orders(id, order_number, created_at, total_amount, delivery_total, pay_method, status)')
@@ -2127,21 +2130,28 @@ function ProducerOrdersTab({ t, showToast, profile }) {
       });
   }, [profile?.id]);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    console.log('[Orders] mount');
+    fetchOrders(true);
+    return () => console.log('[Orders] unmount');
+  }, []);
 
   const getStatus = (i) => i.orders?.status ?? 'pending';
 
   const handleStatusUpdate = async (itemId, newStatus) => {
-    // status lives on the orders row; find the order_id for this item
+    if (updatingId) return;
     const item = orderItems.find((i) => i.id === itemId);
     if (!item?.order_id) return;
+    setUpdatingId(itemId);
     setOrderItems((prev) => prev.map((i) =>
       i.order_id === item.order_id ? { ...i, orders: { ...i.orders, status: newStatus } } : i
     ));
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', item.order_id);
+    setUpdatingId(null);
     if (error) {
       showToast(t.ord_updateErr + error.message, 'error');
-      fetchOrders();
+      fetchOrders(false);
     } else {
       showToast(t.ord_updateOk, 'success');
     }
@@ -2196,7 +2206,8 @@ function ProducerOrdersTab({ t, showToast, profile }) {
           )}
         </h2>
         <button
-          onClick={fetchOrders}
+          type="button"
+          onClick={() => fetchOrders(true)}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-700 font-semibold transition-colors border border-gray-200 hover:border-blue-300 rounded-xl px-3 py-1.5"
         >
           <RefreshCw size={13} /> {t.ord_refresh}
@@ -2389,10 +2400,14 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                 {status === 'pending' && (
                   <button
                     type="button"
+                    disabled={!!updatingId}
                     onClick={() => handleStatusUpdate(item.id, 'confirmed')}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
                   >
-                    <Check size={13} /> {t.ord_accept}
+                    {updatingId === item.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Check size={13} />}
+                    {t.ord_accept}
                   </button>
                 )}
 
@@ -2400,10 +2415,13 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                 {nextStatus && status !== 'pending' && (
                   <button
                     type="button"
+                    disabled={!!updatingId}
                     onClick={() => handleStatusUpdate(item.id, nextStatus)}
-                    className="flex items-center gap-1.5 bg-blue-900 hover:bg-blue-800 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
+                    className="flex items-center gap-1.5 bg-blue-900 hover:bg-blue-800 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-2 rounded-xl transition-all"
                   >
-                    <RefreshCw size={13} />
+                    {updatingId === item.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <RefreshCw size={13} />}
                     {isRtl
                       ? `→ ${STATUS_META[nextStatus]?.ar}`
                       : `→ ${STATUS_META[nextStatus]?.en}`}
@@ -2416,6 +2434,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
                   onUpdate={(s) => handleStatusUpdate(item.id, s)}
                   lang={lang}
                   t={t}
+                  disabled={!!updatingId}
                 />
 
                 {/* Contact via WhatsApp — phone not stored in orders table */}
