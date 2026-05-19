@@ -269,7 +269,7 @@ export function CartProvider({ children }) {
   // ── Derived values ──────────────────────────────────────────────────────────
 
   const totalCount = items.reduce((sum, i) => sum + i.qty, 0);
-  const subtotal   = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const subtotal   = items.reduce((sum, i) => sum + (i.price + (i.chosenSize?.priceAdj ?? 0)) * i.qty, 0);
 
   return (
     <CartContext.Provider

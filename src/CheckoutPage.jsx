@@ -91,7 +91,7 @@ function OrderItemRow({ item, t, lang }) {
       </div>
       <div className="shrink-0 text-end">
         <p className="text-sm font-extrabold text-blue-900">
-          {(item.price * item.qty).toFixed(0)}{' '}
+          {((item.price + (item.chosenSize?.priceAdj ?? 0)) * item.qty).toFixed(0)}{' '}
           <span className="text-xs font-bold">{t('cart_sar')}</span>
         </p>
         <p className="text-[11px] text-gray-400">×{item.qty}</p>
@@ -437,7 +437,7 @@ export default function CheckoutPage() {
         product_id:      i.id,
         name_ar:         i.name       ?? null,
         name_en:         i.nameEn     ?? null,
-        price:           i.price,
+        price:           i.price + (i.chosenSize?.priceAdj ?? 0),
         qty:             i.qty,
         emoji:           i.emoji      ?? null,
         gradient:        i.gradient   ?? null,

@@ -1085,7 +1085,8 @@ export default function ProductDetailsPage() {
                   <LocationPicker
                     key={`pickup-${product.id}`}
                     mode="pickup"
-                    sellerCity={lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity)}
+                    sellerCity={product.sellerLocationLat ? '' : (lang === 'ar' ? product.sellerCity : (product.sellerCityEn || product.sellerCity))}
+                    initialPos={product.sellerLocationLat ? { lat: product.sellerLocationLat, lng: product.sellerLocationLng, address: product.sellerLocationAddress ?? '' } : undefined}
                     lang={lang}
                   />
                 </div>

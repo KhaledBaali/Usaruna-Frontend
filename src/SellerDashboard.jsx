@@ -13,6 +13,7 @@ import { supabase } from './supabase';
 import { useAuth } from './contexts/AuthContext';
 import { enhanceDescription } from './lib/aiApi';
 import logo from './assets/logo.png';
+import LocationPicker from './LocationPicker';
 
 // ─── Translations ──────────────────────────────────────────────────────────────
 
@@ -109,7 +110,14 @@ const T = {
 
 
     st_title: 'إعدادات المتجر', st_info: 'معلومات المتجر',
-    st_nameAr: 'اسم المتجر ', st_city: 'المدينة',
+    st_nameAr: 'اسم المتجر ', st_city: 'المدينة', st_locationLabel: 'الموقع الجغرافي',
+    st_editLocation: 'تعديل الموقع', st_saveLocation: 'حفظ الموقع الجديد',
+    st_locationSaved: 'تم تحديث الموقع بنجاح', st_locationError: 'خطأ في تحديث الموقع: ',
+    st_locationCityOk_riyadh: 'الرياض — الخدمة متاحة ✓',
+    st_locationCityOk_jeddah: 'جدة — الخدمة متاحة ✓',
+    st_locationCityOther: '⚠️ الخدمة غير متوفرة حالياً في منطقتك، لكن قريباً سنكون في منطقتك',
+    st_detectingCity: 'جاري التحقق من المدينة...',
+    st_cancelEdit: 'إلغاء',
     st_dangerZone: 'منطقة الخطر',
     st_deleteTitle: 'حذف المتجر',
     st_deleteDesc: 'سيؤدي هذا إلى حذف متجرك وجميع منتجاتك بشكل نهائي.',
@@ -255,7 +263,14 @@ const T = {
 
 
     st_title: 'Store Settings', st_info: 'Store Information',
-    st_nameAr: 'Store Name', st_city: 'City',
+    st_nameAr: 'Store Name', st_city: 'City', st_locationLabel: 'Location',
+    st_editLocation: 'Edit Location', st_saveLocation: 'Save New Location',
+    st_locationSaved: 'Location updated successfully', st_locationError: 'Error updating location: ',
+    st_locationCityOk_riyadh: 'Riyadh — Service available ✓',
+    st_locationCityOk_jeddah: 'Jeddah — Service available ✓',
+    st_locationCityOther: '⚠️ Service not available in your area yet — coming soon!',
+    st_detectingCity: 'Checking city...',
+    st_cancelEdit: 'Cancel',
     st_dangerZone: 'Danger Zone',
     st_deleteTitle: 'Delete Store',
     st_deleteDesc: 'This will permanently delete your store and all your products. This action cannot be undone.',
@@ -1680,9 +1695,31 @@ function AddProductForm({ profile, cities, categories, showToast, t }) {
           <p className="mt-2 text-[11px] text-gray-400 text-center">
             {(form.delivery_types ?? []).length} / 3 {t.dir === 'rtl' ? 'طرق مختارة' : 'methods selected'}
           </p>
+
+          {/* Pickup location preview — shows seller's exact registered location */}
+          {(form.delivery_types ?? []).includes('pickup') && (() => {
+            const profileCity = cities.find((c) => c.id === profile.city_id);
+            if (!profileCity) return null;
+            const pickupPos = profile.location_lat && profile.location_lng
+              ? { lat: profile.location_lat, lng: profile.location_lng, address: profile.location_address ?? '' }
+              : undefined;
+            return (
+              <div className="mt-4">
+                <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1.5">
+                  <MapPin size={12} className="text-emerald-500" />
+                  {t.dir === 'rtl' ? 'موقع نقطة الاستلام (مقر الأسرة)' : 'Pickup location (family premises)'}
+                </p>
+                <LocationPicker
+                  mode="pickup"
+                  sellerCity={pickupPos ? '' : pickName(profileCity, t.dir === 'rtl')}
+                  initialPos={pickupPos}
+                  lang={t.dir === 'rtl' ? 'ar' : 'en'}
+                  mapHeight={180}
+                />
+              </div>
+            );
+          })()}
         </section>
-
-
 
         <Divider />
 
@@ -1873,10 +1910,105 @@ function DeleteConfirmModal({ t, onCancel, onConfirm, deleting }) {
 
 // ─── Settings tab ──────────────────────────────────────────────────────────────
 
-function SettingsTab({ profile, cities, showToast, t, navigate }) {
-  const [showModal, setShowModal] = useState(false);
-  const [deleting,  setDeleting]  = useState(false);
+function SettingsTab({ profile, cities, showToast, t, navigate, onProfileUpdate }) {
+  const [showModal,    setShowModal]    = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [editingLoc,   setEditingLoc]   = useState(false);
+  const [newLoc,       setNewLoc]       = useState(null);
+  const [newLocCity,   setNewLocCity]   = useState(null);   // 'riyadh' | 'jeddah' | 'other'
+  const [detectingCity,setDetectingCity]= useState(false);
+  const [savingLoc,    setSavingLoc]    = useState(false);
   const profileCity = cities.find((c) => c.id === profile.city_id);
+  const isRtl = t.dir === 'rtl';
+  const lang  = isRtl ? 'ar' : 'en';
+
+  // Derive stored position from the profile row (source of truth)
+  const storedPos = profile.location_lat && profile.location_lng
+    ? { lat: profile.location_lat, lng: profile.location_lng, address: profile.location_address ?? '' }
+    : null;
+
+  const detectCityFromLatLng = async (lat, lng) => {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=ar`;
+    const res  = await fetch(url, { headers: { 'User-Agent': 'Usaruna/1.0' } });
+    const data = await res.json();
+    const addr = data.address ?? {};
+    const text = [addr.city, addr.county, addr.state_district, addr.town, addr.municipality].filter(Boolean).join(' ');
+    if (/الرياض|Riyadh/i.test(text)) return 'riyadh';
+    if (/جدة|Jeddah|Jiddah/i.test(text)) return 'jeddah';
+    return 'other';
+  };
+
+  const handleNewLocConfirm = async (loc) => {
+    setNewLoc(loc);
+    setNewLocCity(null);
+    setDetectingCity(true);
+    try {
+      const city = await detectCityFromLatLng(loc.lat, loc.lng);
+      setNewLocCity(city);
+    } catch {
+      setNewLocCity('other');
+    } finally {
+      setDetectingCity(false);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    if (!newLoc || !newLocCity || newLocCity === 'other' || detectingCity) return;
+    setSavingLoc(true);
+    try {
+      const cityRecord = cities.find((c) => {
+        const n = c.name_ar ?? '';
+        if (newLocCity === 'riyadh') return /الرياض/.test(n);
+        if (newLocCity === 'jeddah') return /جدة/.test(n);
+        return false;
+      });
+
+      // 1. Save to auth metadata (always works — no DB columns required)
+      const { error: metaErr } = await supabase.auth.updateUser({
+        data: { location_lat: newLoc.lat, location_lng: newLoc.lng, location_address: newLoc.address },
+      });
+      if (metaErr) throw metaErr;
+
+      // 2. Save to producer_profiles table so customers can see the precise location.
+      //    If the location_lat/lng/address columns don't exist yet the error is caught
+      //    silently — run the SQL migration to enable this:
+      //    ALTER TABLE public.producer_profiles
+      //      ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION,
+      //      ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION,
+      //      ADD COLUMN IF NOT EXISTS location_address TEXT;
+      const profileUpdate = {
+        ...(cityRecord ? { city_id: cityRecord.id } : {}),
+        location_lat:     newLoc.lat,
+        location_lng:     newLoc.lng,
+        location_address: newLoc.address,
+      };
+      const { error: dbErr } = await supabase
+        .from('producer_profiles')
+        .update(profileUpdate)
+        .eq('id', profile.id);
+      if (dbErr && !dbErr.message?.toLowerCase().includes('column')) throw dbErr;
+
+      // Update parent profile state so the whole dashboard reflects the change
+      onProfileUpdate?.((prev) => ({
+        ...prev,
+        location_lat:     newLoc.lat,
+        location_lng:     newLoc.lng,
+        location_address: newLoc.address,
+        ...(cityRecord ? { city_id: cityRecord.id } : {}),
+      }));
+
+      setEditingLoc(false);
+      setNewLoc(null);
+      setNewLocCity(null);
+      showToast(t.st_locationSaved, 'success');
+    } catch (err) {
+      showToast(`${t.st_locationError}${err.message}`, 'error');
+    } finally {
+      setSavingLoc(false);
+    }
+  };
+
+  const cancelEditLoc = () => { setEditingLoc(false); setNewLoc(null); setNewLocCity(null); };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -1904,19 +2036,103 @@ function SettingsTab({ profile, cities, showToast, t, navigate }) {
       {/* Store Info */}
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 mb-6">
         <h2 className="font-bold text-gray-700 text-sm uppercase tracking-wider mb-5">{t.st_info}</h2>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
+
+          {/* Store name */}
           <div>
             <p className="text-xs font-semibold text-gray-400 mb-1">{t.st_nameAr}</p>
             <p className="text-sm font-bold text-gray-800">
-              {t.dir === 'rtl' ? profile.business_name_ar : (profile.business_name_en || profile.business_name_ar)}
+              {isRtl ? profile.business_name_ar : (profile.business_name_en || profile.business_name_ar)}
             </p>
           </div>
+
+          {/* Location section */}
           {profileCity && (
             <div>
-              <p className="text-xs font-semibold text-gray-400 mb-1">{t.st_city}</p>
-              <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                <MapPin size={13} className="text-blue-500" />{pickName(profileCity, t.dir === 'rtl')}
+              {/* Header row: label + edit button */}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-400">{t.st_locationLabel}</p>
+                {!editingLoc && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingLoc(true)}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl px-3 py-1.5 transition-colors"
+                  >
+                    <MapPin size={11} /> {t.st_editLocation}
+                  </button>
+                )}
+              </div>
+
+              {/* City name */}
+              <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5 mb-3">
+                <MapPin size={13} className="text-blue-500" />{pickName(profileCity, isRtl)}
               </p>
+
+              {/* Read-only map or edit mode */}
+              {!editingLoc ? (
+                <LocationPicker
+                  mode="pickup"
+                  sellerCity={storedPos ? '' : pickName(profileCity, isRtl)}
+                  initialPos={storedPos ?? undefined}
+                  lang={lang}
+                  mapHeight={180}
+                />
+              ) : (
+                <div className="space-y-3">
+                  <LocationPicker
+                    mode="customer"
+                    onConfirm={handleNewLocConfirm}
+                    lang={lang}
+                    mapHeight={200}
+                  />
+
+                  {/* City detection feedback */}
+                  {detectingCity && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
+                      <Loader2 size={13} className="animate-spin text-blue-500 shrink-0" />
+                      <span className="text-xs font-semibold text-blue-600">{t.st_detectingCity}</span>
+                    </div>
+                  )}
+                  {!detectingCity && newLocCity === 'riyadh' && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <Check size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-xs font-bold text-emerald-700">{t.st_locationCityOk_riyadh}</p>
+                    </div>
+                  )}
+                  {!detectingCity && newLocCity === 'jeddah' && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <Check size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-xs font-bold text-emerald-700">{t.st_locationCityOk_jeddah}</p>
+                    </div>
+                  )}
+                  {!detectingCity && newLocCity === 'other' && (
+                    <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-xs font-bold text-amber-700">{t.st_locationCityOther}</p>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelEditLoc}
+                      disabled={savingLoc}
+                      className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {t.st_cancelEdit}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveLocation}
+                      disabled={!newLoc || !newLocCity || newLocCity === 'other' || detectingCity || savingLoc}
+                      className="flex-1 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {savingLoc && <Loader2 size={13} className="animate-spin" />}
+                      {t.st_saveLocation}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1978,15 +2194,25 @@ export default function SellerDashboard() {
       if (profileError) { if (!cancelled) setDbError(profileError.message); return; }
       if (!profileData) { if (!cancelled) navigate('/'); return; }
 
-      const [{ data: citiesData }, { data: catsData }] = await Promise.all([
+      const [{ data: citiesData }, { data: catsData }, { data: { user: authUser } }] = await Promise.all([
         supabase.from('cities').select('id, name_ar, name_en').order('id'),
         supabase.from('categories').select('id, name_ar, name_en, slug').order('id'),
+        supabase.auth.getUser(),
       ]);
+
+      // Merge location from auth metadata into profile (no DB columns needed)
+      const meta = authUser?.user_metadata ?? {};
+      const profileWithLocation = {
+        ...profileData,
+        location_lat:     meta.location_lat     ?? profileData.location_lat     ?? null,
+        location_lng:     meta.location_lng     ?? profileData.location_lng     ?? null,
+        location_address: meta.location_address ?? profileData.location_address ?? null,
+      };
 
       if (!cancelled) {
         setCities(citiesData   ?? []);
         setCategories(catsData ?? []);
-        setProfile(profileData);
+        setProfile(profileWithLocation);
         setIsAuthorized(true);
         setIsChecking(false);
       }
@@ -2539,7 +2765,7 @@ function ProducerOrdersTab({ t, showToast, profile }) {
           {activeTab === 'orders'      && <ProducerOrdersTab profile={profile} t={t} showToast={showToast} />}
           {activeTab === 'add-product' && <AddProductForm profile={profile} cities={cities} categories={categories} showToast={showToast} t={t} />}
           {activeTab === 'my-products' && <MyProductsTab  profile={profile} t={t} showToast={showToast} />}
-          {activeTab === 'settings'    && <SettingsTab    profile={profile} cities={cities} showToast={showToast} t={t} navigate={navigate} />}
+          {activeTab === 'settings'    && <SettingsTab    profile={profile} cities={cities} showToast={showToast} t={t} navigate={navigate} onProfileUpdate={setProfile} />}
         </main>
       </div>
     </div>

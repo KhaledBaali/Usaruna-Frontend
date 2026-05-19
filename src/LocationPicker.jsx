@@ -75,6 +75,7 @@ export default function LocationPicker({
   initialPos    = null,
   onConfirm,
   lang          = 'ar',
+  mapHeight     = 220,
 }) {
   const isRtl      = lang === 'ar';
   const isReadonly = mode === 'pickup';
@@ -86,11 +87,12 @@ export default function LocationPicker({
   const [searching,   setSearching]   = useState(false);
   const [geolocating, setGeolocating] = useState(false);
   const [confirmed,   setConfirmed]   = useState(false);
-  const [geocoding,   setGeocoding]   = useState(isReadonly && !!sellerCity);
+  // Skip geocoding if an initialPos is already provided
+  const [geocoding,   setGeocoding]   = useState(isReadonly && !!sellerCity && !initialPos);
 
-  // ── Geocode seller city on mount (pickup mode) ──────────────────────────────
+  // ── Geocode seller city on mount (pickup mode, only when no initialPos) ──────
   useEffect(() => {
-    if (!isReadonly || !sellerCity) return;
+    if (!isReadonly || !sellerCity || initialPos) return;
     setGeocoding(true);
     geocodeCity(sellerCity, lang)
       .then((loc) => { if (loc) { setPosition(loc); setAddress(loc.address); } })
@@ -247,7 +249,7 @@ export default function LocationPicker({
       )}
 
       {/* ── Map ── */}
-      <div style={{ height: 240 }}>
+      <div style={{ height: mapHeight }}>
         <MapContainer
           center={center}
           zoom={zoom}

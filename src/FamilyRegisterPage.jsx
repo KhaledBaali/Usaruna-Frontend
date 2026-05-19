@@ -10,6 +10,7 @@ import {
 import { supabase } from './supabase';
 import { useLang } from './contexts/LanguageContext';
 import { enhanceDescription } from './lib/aiApi';
+import LocationPicker from './LocationPicker';
 
 // ─── CATEGORY EMOJI MAP ───────────────────────────────────────────────────────
 // Emojis are a UI concern — slugs come from the DB, emojis are mapped here
@@ -129,12 +130,14 @@ export default function FamilyRegisterPage() {
     familyName:      '',
     email:           '',
     phone:           '',
-    city:            '',
     category:        '',
     description:     '',
     password:        '',
     confirmPassword: '',
   });
+  const [pickedLoc,      setPickedLoc]      = useState(null);
+  const [locCity,        setLocCity]        = useState(null); // null | 'riyadh' | 'jeddah' | 'other'
+  const [detectingCity,  setDetectingCity]  = useState(false);
   const [showPw,      setShowPw]      = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading,   setIsLoading]   = useState(false);
@@ -168,6 +171,33 @@ export default function FamilyRegisterPage() {
     fetchMeta();
   }, []);
 
+  const detectCityFromLatLng = async (lat, lng) => {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=ar`;
+    const res  = await fetch(url, { headers: { 'User-Agent': 'Usaruna/1.0' } });
+    const data = await res.json();
+    const addr = data.address ?? {};
+    const text = [addr.city, addr.county, addr.state_district, addr.town, addr.municipality]
+      .filter(Boolean).join(' ');
+    if (/الرياض|Riyadh/i.test(text)) return 'riyadh';
+    if (/جدة|Jeddah|Jiddah/i.test(text)) return 'jeddah';
+    return 'other';
+  };
+
+  const handleLocationConfirm = async (loc) => {
+    setPickedLoc(loc);
+    setLocCity(null);
+    setFieldErrors((f) => ({ ...f, city: undefined }));
+    setDetectingCity(true);
+    try {
+      const city = await detectCityFromLatLng(loc.lat, loc.lng);
+      setLocCity(city);
+    } catch {
+      setLocCity('other');
+    } finally {
+      setDetectingCity(false);
+    }
+  };
+
   const handleEnhance = async () => {
     if (!form.description.trim() || enhancing) return;
     setEnhancing(true);
@@ -196,7 +226,8 @@ export default function FamilyRegisterPage() {
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = t('freg_errEmailFmt');
     if (!form.phone.trim())       errs.phone           = t('freg_errPhone');
     else if (!/^05\d{8}$/.test(form.phone.trim())) errs.phone = t('freg_errPhoneFmt');
-    if (!form.city)               errs.city            = t('freg_errCity');
+    if (!pickedLoc || !locCity || detectingCity)  errs.city = t('freg_errLocation');
+    else if (locCity === 'other')                 errs.city = t('freg_errLocationCity');
     if (!form.category)           errs.category        = t('freg_errCat');
     if (!pwValid(form.password))  errs.password        = t('freg_errPw');
     if (form.password !== form.confirmPassword) errs.confirmPassword = t('freg_errPwMatch');
@@ -217,9 +248,12 @@ export default function FamilyRegisterPage() {
         password: form.password,
         options: {
           data: {
-            full_name: form.ownerName.trim(),
-            phone:     form.phone.trim(),
-            role:      'producer',
+            full_name:        form.ownerName.trim(),
+            phone:            form.phone.trim(),
+            role:             'producer',
+            location_lat:     pickedLoc?.lat,
+            location_lng:     pickedLoc?.lng,
+            location_address: pickedLoc?.address,
           },
         },
       });
@@ -256,15 +290,36 @@ export default function FamilyRegisterPage() {
       //   CREATE POLICY "producers can insert own profile"
       //   ON public.producer_profiles FOR INSERT TO authenticated
       //   WITH CHECK (auth.uid() = user_id);
+      const cityRecord = dbCities.find((c) => {
+        const n = c.name_ar ?? '';
+        if (locCity === 'riyadh') return /الرياض/.test(n);
+        if (locCity === 'jeddah') return /جدة/.test(n);
+        return false;
+      });
+      const cityId = cityRecord?.id ?? dbCities[0]?.id ?? 1;
+
       const { error: profileError } = await supabase.rpc('create_producer_profile', {
         p_user_id:     data.user.id,
         p_name_ar:     form.familyName.trim(),
-        p_city_id:     parseInt(form.city),
+        p_city_id:     cityId,
         p_category_id: parseInt(form.category),
         p_desc_ar:     form.description.trim() || null,
         p_email:       form.email.trim(),
         p_phone:       form.phone.trim() || null,
       });
+
+      // Save precise location to producer_profiles (best-effort, requires SQL migration)
+      if (!profileError && pickedLoc) {
+        await supabase
+          .from('producer_profiles')
+          .update({
+            location_lat:     pickedLoc.lat,
+            location_lng:     pickedLoc.lng,
+            location_address: pickedLoc.address,
+          })
+          .eq('user_id', data.user.id);
+        // Silently ignore — if columns don't exist the registration still succeeds
+      }
 
       if (profileError) {
         // Auth succeeded but profile insert failed — surface a specific error.
@@ -460,27 +515,49 @@ export default function FamilyRegisterPage() {
                     </div>
                   </Field>
 
-                  {/* City */}
-                  <Field label={t('freg_labelCity')} required error={fieldErrors.city} isRtl={isRtl}>
-                    <div className="relative">
-                      <MapPin size={16} className={`absolute ${iStart} top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none`} />
-                      <ChevronDown size={14} className={`absolute ${iEnd} top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none`} />
-                      <select
-                        value={form.city}
-                        onChange={set('city')}
-                        disabled={loadingMeta}
-                        className={`${inputCls('city')} ${pStart} ${isRtl ? 'pl-8' : 'pr-8'} appearance-none cursor-pointer disabled:opacity-60`}
-                      >
-                        <option value="">
-                          {loadingMeta
-                            ? (lang === 'ar' ? 'جاري التحميل...' : 'Loading...')
-                            : t('freg_cityPh')}
-                        </option>
-                        {dbCities.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name_ar}</option>
-                        ))}
-                      </select>
-                    </div>
+                  {/* Location Picker */}
+                  <Field label={t('freg_labelLocation')} required error={fieldErrors.city} isRtl={isRtl}>
+                    <LocationPicker
+                      mode="customer"
+                      onConfirm={handleLocationConfirm}
+                      lang={lang}
+                      mapHeight={180}
+                    />
+
+                    {/* City detection status */}
+                    {detectingCity && (
+                      <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
+                        <Loader2 size={13} className="animate-spin text-blue-500 shrink-0" />
+                        <span className="text-xs font-semibold text-blue-600">
+                          {lang === 'ar' ? 'جاري التحقق من المدينة...' : 'Checking city...'}
+                        </span>
+                      </div>
+                    )}
+                    {!detectingCity && locCity === 'riyadh' && (
+                      <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <Check size={14} className="text-emerald-600 shrink-0" />
+                        <p className="text-xs font-bold text-emerald-700">
+                          {lang === 'ar' ? 'الرياض — الخدمة متاحة ✓' : 'Riyadh — Service available ✓'}
+                        </p>
+                      </div>
+                    )}
+                    {!detectingCity && locCity === 'jeddah' && (
+                      <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <Check size={14} className="text-emerald-600 shrink-0" />
+                        <p className="text-xs font-bold text-emerald-700">
+                          {lang === 'ar' ? 'جدة — الخدمة متاحة ✓' : 'Jeddah — Service available ✓'}
+                        </p>
+                      </div>
+                    )}
+                    {!detectingCity && locCity === 'other' && (
+                      <div className="mt-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p className="text-xs font-bold text-amber-700">
+                          {lang === 'ar'
+                            ? '⚠️ الخدمة غير متوفرة حالياً في منطقتك، لكن قريباً سنكون في منطقتك'
+                            : '⚠️ Service not available in your area yet — coming soon!'}
+                        </p>
+                      </div>
+                    )}
                   </Field>
 
                   {/* Category */}
@@ -607,9 +684,9 @@ export default function FamilyRegisterPage() {
                   {/* Submit */}
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || detectingCity}
                     className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 shadow-sm mt-2
-                      ${isLoading
+                      ${isLoading || detectingCity
                         ? 'bg-emerald-700 text-white cursor-wait'
                         : 'bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white'
                       }`}

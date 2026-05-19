@@ -198,7 +198,7 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty, onUpdateMeta })
         {/* Price + controls */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <span className="text-lg font-extrabold text-blue-900 leading-none">
-            {(item.price * item.qty).toFixed(0)}<span className="text-sm font-bold ms-1">{t('cart_sar')}</span>
+            {((item.price + (item.chosenSize?.priceAdj ?? 0)) * item.qty).toFixed(0)}<span className="text-sm font-bold ms-1">{t('cart_sar')}</span>
           </span>
           <div className="flex items-center gap-1">
             <button onClick={() => onRemove(item.id)}
@@ -219,7 +219,7 @@ function CartItem({ item, t, lang, isRtl, onRemove, onUpdateQty, onUpdateMeta })
             </div>
           </div>
         </div>
-        {item.qty > 1 && <p className="text-[11px] text-gray-400 mt-1">{item.price} {t('cart_sar')} × {item.qty}</p>}
+        {item.qty > 1 && <p className="text-[11px] text-gray-400 mt-1">{(item.price + (item.chosenSize?.priceAdj ?? 0))} {t('cart_sar')} × {item.qty}</p>}
         {item.qty >= maxQty && maxQty < 99 && (
           <p className="text-[11px] text-amber-600 mt-1 font-semibold">{lang === 'ar' ? `الحد الأقصى المتاح: ${maxQty}` : `Max available: ${maxQty}`}</p>
         )}
