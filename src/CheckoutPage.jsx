@@ -10,7 +10,7 @@ import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
 import { supabase } from './supabase';
 import AccountMenu from './AccountMenu';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 
 // ─── DELIVERY META ────────────────────────────────────────────────────────────
 

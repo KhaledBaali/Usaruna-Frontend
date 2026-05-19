@@ -6,7 +6,7 @@ import {
   Globe, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { supabase } from './supabase';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 import { useLang } from './contexts/LanguageContext';
 
 // ─── BRAND PANEL ──────────────────────────────────────────────────────────────

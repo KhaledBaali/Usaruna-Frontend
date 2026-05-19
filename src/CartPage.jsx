@@ -7,7 +7,7 @@ import { useLang } from './contexts/LanguageContext';
 import { useCart } from './contexts/CartContext';
 import LocationPicker from './LocationPicker';
 import AccountMenu from './AccountMenu';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 
 const DELIVERY_PRICES = { pickup: 0, seller_delivery: 15, third_party: 25 };
 

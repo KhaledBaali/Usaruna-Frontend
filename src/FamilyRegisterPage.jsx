@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import logo from './assets/logo.png';
+const logo = '/logo.webp';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   User, Users, Mail, Phone, Lock, Eye, EyeOff,
@@ -202,7 +202,7 @@ export default function FamilyRegisterPage() {
     if (!form.description.trim() || enhancing) return;
     setEnhancing(true);
     try {
-      const enhanced = await enhanceDescription(form.description);
+      const enhanced = await enhanceDescription(form.description, lang);
       setForm((f) => ({ ...f, description: enhanced }));
     } catch { /* keep original text */ } finally {
       setEnhancing(false);

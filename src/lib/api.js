@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { detectLang, parseDeliveryTypes, toWebP } from './utils';
 
 // ── Category visual maps (slug-based + id-based fallback) ──────────────────────
 const CATEGORY_EMOJI = { food:'🍛', sweets:'🍰', frozen:'❄️', spices:'🌿', crafts:'🧶' };
@@ -15,24 +16,6 @@ const CATEGORY_GRADIENT_BY_ID  = {
 };
 const DEFAULT_GRADIENT = 'from-blue-50 to-indigo-100';
 
-// ── Parse delivery_type column → normalised array ─────────────────────────────
-// Migrates legacy names: 'fast' → 'seller_delivery', 'nationwide' → 'third_party'
-function parseDeliveryTypes(delivery_type, is_perishable) {
-  let arr;
-  if (!delivery_type) {
-    arr = is_perishable ? ['seller_delivery'] : ['third_party'];
-  } else {
-    try {
-      const parsed = JSON.parse(delivery_type);
-      arr = Array.isArray(parsed) && parsed.length ? parsed : [delivery_type];
-    } catch {
-      arr = [delivery_type];
-    }
-  }
-  return arr.map((d) =>
-    d === 'fast' ? 'seller_delivery' : d === 'nationwide' ? 'third_party' : d
-  );
-}
 
 // ── Normalise a Supabase product row into the UI shape ────────────────────────
 function normaliseProduct(row) {
@@ -64,6 +47,7 @@ function normaliseProduct(row) {
   }));
 
   // Multiple images: use images JSONB array; fall back to single image_url
+  // Keep original URLs — toWebP render endpoint requires Supabase Pro
   const imagesArr = (() => {
     if (Array.isArray(row.images) && row.images.length) return row.images;
     try {
@@ -79,7 +63,7 @@ function normaliseProduct(row) {
     nameEn:        row.name_en        ?? row.nameEn        ?? row.name_ar ?? row.name,
     description:   row.description_ar ?? row.description,
     descriptionEn: row.description_en ?? row.descriptionEn,
-    image:         row.image_url      ?? row.image,
+    image:         row.image_url ?? row.image,
     images:        imagesArr,
     isPerishable:  row.is_perishable  ?? row.isPerishable  ?? false,
     gradient,
@@ -183,7 +167,7 @@ export async function fetchReviews(productId) {
       helpful:         r.helpful_count ?? 0,
       comment:         r.comment_ar ?? r.comment,
       comment_en:      r.comment_en ?? r.comment,
-      lang:            /[؀-ۿ]/.test(r.comment_ar ?? r.comment ?? '') ? 'ar' : 'en',
+      lang:            detectLang(r.comment_ar ?? r.comment),
       seller_reply:    r.seller_reply    ?? null,
       seller_reply_en: r.seller_reply_en ?? null,
       seller_reply_at: r.seller_reply_at ?? null,
@@ -290,7 +274,7 @@ export async function fetchQuestions(productId) {
       author:          q.author_name_ar ?? 'مجهول',
       helpful:         q.helpful_count ?? 0,
       question:        q.question,
-      lang:            /[؀-ۿ]/.test(q.question ?? '') ? 'ar' : 'en',
+      lang:            detectLang(q.question),
       seller_answer:   q.seller_answer    ?? null,
       seller_answer_en: q.seller_answer_en ?? null,
       seller_answer_at: q.seller_answer_at ?? null,
