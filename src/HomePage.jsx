@@ -517,8 +517,8 @@ export default function HomePage() {
   <div 
     className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[-1] rounded-full pointer-events-none"
     style={{
-      width: '800px', // 1. التحكم بالحجم (العرض)
-      height: '800px', // 2. التحكم بالحجم (الطول - خله نفس العرض عشان تصير دائرة)
+      width: '600px', // 1. التحكم بالحجم (العرض)
+      height: '600px', // 2. التحكم بالحجم (الطول - خله نفس العرض عشان تصير دائرة)
       
       // 3. التحكم باللون: استخدمنا تدرج دائري يبدأ بلون أزرق غامق بالمنتصف ويختفي بالأطراف
       background: 'radial-gradient(circle, rgba(10,20,60,0.6) 0%, rgba(10,20,60,0) 70%)',
