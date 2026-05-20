@@ -8,12 +8,13 @@ const CATEGORY_GRADIENT = {
   frozen:'from-sky-50 to-blue-100',  spices:'from-green-50 to-emerald-100',
   crafts:'from-violet-50 to-purple-100',
 };
-const CATEGORY_EMOJI_BY_ID     = { 1:'🍛', 2:'🍰', 3:'❄️', 4:'🌿', 5:'🧶' };
+const CATEGORY_EMOJI_BY_ID     = { 1:'🍛', 2:'🍰', 4:'❄️', 5:'🌿', 3:'🧶' };
 const CATEGORY_GRADIENT_BY_ID  = {
   1:'from-amber-50 to-orange-100', 2:'from-pink-50 to-rose-100',
   3:'from-sky-50 to-blue-100',     4:'from-green-50 to-emerald-100',
   5:'from-violet-50 to-purple-100',
 };
+const CATEGORY_SLUG_BY_ID = { 1: 'food', 2: 'sweets', 4: 'frozen', 5: 'spices', 3: 'crafts' };
 const DEFAULT_GRADIENT = 'from-blue-50 to-indigo-100';
 
 
@@ -21,8 +22,8 @@ const DEFAULT_GRADIENT = 'from-blue-50 to-indigo-100';
 function normaliseProduct(row) {
   if (!row) return null;
   const p       = row.producer_profiles;
-  const catSlug = row.category?.slug ?? '';
   const catId   = row.category_id;
+  const catSlug = row.category?.slug ?? CATEGORY_SLUG_BY_ID[catId] ?? '';
 
   const emoji    = CATEGORY_EMOJI[catSlug]    ?? CATEGORY_EMOJI_BY_ID[catId]    ?? row.emoji    ?? '📦';
   const gradient = CATEGORY_GRADIENT[catSlug] ?? CATEGORY_GRADIENT_BY_ID[catId] ?? row.gradient ?? DEFAULT_GRADIENT;
@@ -59,6 +60,7 @@ function normaliseProduct(row) {
 
   return {
     ...row,
+    category:      catSlug,
     name:          row.name_ar        ?? row.name,
     nameEn:        row.name_en        ?? row.nameEn        ?? row.name_ar ?? row.name,
     description:   row.description_ar ?? row.description,
