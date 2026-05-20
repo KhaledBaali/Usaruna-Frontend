@@ -400,6 +400,8 @@ function BarChart({ data, height = 100 }) {
 function OverviewTab({ profile, onNavigate, t, cities }) {
   const [productCount, setProductCount] = useState(null);
   const [avgRating,    setAvgRating]    = useState(null);
+  const [orderCount,   setOrderCount]   = useState(null);
+  const [totalRevenue, setTotalRevenue] = useState(null);
 
   useEffect(() => {
     supabase
@@ -424,15 +426,25 @@ function OverviewTab({ profile, onNavigate, t, cities }) {
           setAvgRating(avg);
         }
       });
-  }, [profile.id]);
+
+    supabase
+      .from('order_items')
+      .select('price_at_purchase, quantity, order_id, status')
+      .eq('producer_id', profile.user_id)
+      .then(({ data }) => {
+        const items = (data ?? []).filter((i) => i.status !== 'cancelled');
+        setOrderCount(new Set(items.map((i) => i.order_id)).size);
+        setTotalRevenue(items.reduce((s, i) => s + (i.price_at_purchase ?? 0) * (i.quantity ?? 1), 0));
+      });
+  }, [profile.id, profile.user_id]);
 
   const profileCity = cities.find((c) => c.id === profile.city_id);
 
   const STATS = [
-    { label: t.stat_products, value: productCount ?? t.noData, Icon: Package,       color: 'bg-blue-50    text-blue-600'    },
-    { label: t.stat_orders,   value: t.noData,                 Icon: ClipboardList, color: 'bg-amber-50   text-amber-600'   },
-    { label: t.stat_revenue,  value: t.noData,                 Icon: TrendingUp,    color: 'bg-emerald-50 text-emerald-600' },
-    { label: t.stat_rating,   value: avgRating ? `${avgRating} ★` : t.noData, Icon: Store, color: 'bg-violet-50 text-violet-600' },
+    { label: t.stat_products, value: productCount ?? t.noData,                                                          Icon: Package,       color: 'bg-blue-50    text-blue-600'    },
+    { label: t.stat_orders,   value: orderCount   !== null ? orderCount                              : t.noData,         Icon: ClipboardList, color: 'bg-amber-50   text-amber-600'   },
+    { label: t.stat_revenue,  value: totalRevenue !== null ? `${totalRevenue.toFixed(0)} ${t.ord_sar}` : t.noData,      Icon: TrendingUp,    color: 'bg-emerald-50 text-emerald-600' },
+    { label: t.stat_rating,   value: avgRating ? `${avgRating} ★` : t.noData,                                          Icon: Store,         color: 'bg-violet-50  text-violet-600'  },
   ];
 
   return (
@@ -2366,17 +2378,13 @@ function ProducerOrdersTab({ t, showToast, profile }) {
     return () => console.log('[Orders] unmount');
   }, []);
 
-  const getStatus = (i) => i.orders?.status ?? 'pending';
+  const getStatus = (i) => i.status ?? i.orders?.status ?? 'pending';
 
   const handleStatusUpdate = async (itemId, newStatus) => {
     if (updatingId) return;
-    const item = orderItems.find((i) => i.id === itemId);
-    if (!item?.order_id) return;
     setUpdatingId(itemId);
-    setOrderItems((prev) => prev.map((i) =>
-      i.order_id === item.order_id ? { ...i, orders: { ...i.orders, status: newStatus } } : i
-    ));
-    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', item.order_id);
+    setOrderItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: newStatus } : i));
+    const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
     setUpdatingId(null);
     if (error) {
       showToast(t.ord_updateErr + error.message, 'error');

@@ -10,6 +10,7 @@ import {
 import { supabase } from './supabase';
 import { useLang } from './contexts/LanguageContext';
 import { enhanceDescription } from './lib/aiApi';
+import { createProducerProfile } from './lib/api';
 import LocationPicker from './LocationPicker';
 
 // ─── CATEGORY EMOJI MAP ───────────────────────────────────────────────────────
@@ -298,18 +299,25 @@ export default function FamilyRegisterPage() {
       });
       const cityId = cityRecord?.id ?? dbCities[0]?.id ?? 1;
 
-      const { error: profileError } = await supabase.rpc('create_producer_profile', {
-        p_user_id:     data.user.id,
-        p_name_ar:     form.familyName.trim(),
-        p_city_id:     cityId,
-        p_category_id: parseInt(form.category),
-        p_desc_ar:     form.description.trim() || null,
-        p_email:       form.email.trim(),
-        p_phone:       form.phone.trim() || null,
-      });
+      try {
+        await createProducerProfile({
+          userId:     data.user.id,
+          nameAr:     form.familyName.trim(),
+          cityId,
+          categoryId: parseInt(form.category),
+          descAr:     form.description.trim() || null,
+          email:      form.email.trim(),
+          phone:      form.phone.trim() || null,
+        });
+      } catch (profileError) {
+        throw new Error(
+          `حساب المصادقة تم إنشاؤه لكن فشل إنشاء ملف المتجر: ${profileError.message}. ` +
+          `يرجى التواصل مع الدعم بالبريد ${form.email.trim()}`
+        );
+      }
 
-      // Save precise location to producer_profiles (best-effort, requires SQL migration)
-      if (!profileError && pickedLoc) {
+      // Save precise location (best-effort)
+      if (pickedLoc) {
         await supabase
           .from('producer_profiles')
           .update({
@@ -318,17 +326,6 @@ export default function FamilyRegisterPage() {
             location_address: pickedLoc.address,
           })
           .eq('user_id', data.user.id);
-        // Silently ignore — if columns don't exist the registration still succeeds
-      }
-
-      if (profileError) {
-        // Auth succeeded but profile insert failed — surface a specific error.
-        // The user now has an auth account; direct them to contact support
-        // rather than letting them retry (which would hit "already registered").
-        throw new Error(
-          `حساب المصادقة تم إنشاؤه لكن فشل إنشاء ملف المتجر: ${profileError.message}. ` +
-          `يرجى التواصل مع الدعم بالبريد ${form.email.trim()}`
-        );
       }
 
       if (data.session) {

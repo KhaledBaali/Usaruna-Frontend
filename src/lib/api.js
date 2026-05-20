@@ -363,3 +363,32 @@ export async function updateQuestionHelpful(questionId, delta) {
     return false;
   }
 }
+
+// ── Producer registration ─────────────────────────────────────────────────────
+export async function createProducerProfile({ userId, nameAr, cityId, categoryId, descAr = null, email, phone = null }) {
+  const { error } = await supabase.rpc('create_producer_profile', {
+    p_user_id:     userId,
+    p_name_ar:     nameAr,
+    p_city_id:     cityId,
+    p_category_id: categoryId,
+    p_desc_ar:     descAr,
+    p_email:       email,
+    p_phone:       phone,
+  });
+  if (error) throw error;
+  return { ok: true };
+}
+
+// ── Place order ───────────────────────────────────────────────────────────────
+export async function placeOrder({ userId, orderNumber, total, deliveryTotal, payMethod, items }) {
+  const { data, error } = await supabase.rpc('place_order', {
+    p_user_id:        userId,
+    p_order_number:   orderNumber,
+    p_total:          total,
+    p_delivery_total: deliveryTotal,
+    p_pay_method:     payMethod,
+    p_items:          items,
+  });
+  if (error) throw error;
+  return data;
+}
