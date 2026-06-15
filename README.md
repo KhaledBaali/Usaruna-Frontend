@@ -1,16 +1,94 @@
-# React + Vite
+# Usaruna — أسرونا
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An e-commerce marketplace connecting customers with family home-based businesses. Supports both Arabic and English, with AI-powered features for sellers.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Customer side** — browse products, manage cart & wishlist, checkout, order tracking
+- **Seller side** — seller dashboard for managing products, orders, and AI-assisted tools
+- **Family registration** — onboarding flow for home-based producers with location picker
+- **AI tools** — smart reply to customer reviews, product description enhancement, review summarization (powered by Hugging Face / Qwen2.5)
+- **Bilingual** — full Arabic / English UI with RTL support
+- **Authentication** — login, register, forgot password, and reset password flows via Supabase Auth
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Layer | Technology |
+|---|---|
+| UI | React 19, React Router v7, Tailwind CSS |
+| Build | Vite |
+| Maps | React Leaflet |
+| Database & Auth | Supabase |
+| Testing | Vitest (unit), Playwright (e2e) |
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Prerequisites
+
+- Node.js 18+
+- A [Supabase](https://supabase.com) project
+- The [Usaruna Backend](https://github.com/KhaledBaali/Usaruna-Backend) running locally or deployed
+
+### Installation
+
+```bash
+git clone https://github.com/KhaledBaali/Usaruna-Frontend.git
+cd Usaruna-Frontend
+npm install
+```
+
+### Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_BACKEND_URL=http://localhost:5000
+VITE_AI_URL=http://localhost:8000
+```
+
+### Run
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`.
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm test` | Run unit tests (Vitest) |
+| `npm run test:e2e` | Run end-to-end tests (Playwright) |
+
+## Project Structure
+
+```
+src/
+├── contexts/          # React contexts (Auth, Cart, Wishlist, Language)
+├── lib/               # Supabase client and utilities
+├── translations/      # ar.js / en.js language strings
+├── App.jsx            # Root component and routes
+├── HomePage.jsx
+├── ProductDetailsPage.jsx
+├── CartPage.jsx
+├── CheckoutPage.jsx
+├── CustomerDashboard.jsx
+├── SellerDashboard.jsx
+├── FamilyRegisterPage.jsx
+├── LoginPage.jsx
+├── UserRegisterPage.jsx
+├── LocationPicker.jsx
+├── aiApi.js           # AI service calls (enhance, summarize, smart-reply)
+└── api.js             # Supabase data helpers
+```
+
+## Related
+
+- [Usaruna Backend](https://github.com/KhaledBaali/Usaruna-Backend) — Node.js/Express API + Python/FastAPI AI service
