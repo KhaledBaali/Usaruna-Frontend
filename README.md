@@ -1,4 +1,4 @@
-# Usaruna — أسرونا
+# Usaruna — أسرنا
 
 An e-commerce marketplace connecting customers with family home-based businesses. Supports both Arabic and English, with AI-powered features for sellers.
 
