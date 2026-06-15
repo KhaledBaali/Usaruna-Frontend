@@ -151,3 +151,12 @@ src/
 ## License
 
 MIT © [Khaled Baali](https://github.com/KhaledBaali)
+
+
+### Project Screenshots
+
+| Screenshot | Language | Technical Insights |
+| --- | --- | --- |
+| ![Arabic Homepage](screenshots/homepage-ar.png) | Arabic | Bilingual support validation (Arabic/English), UI responsiveness check, RTL layout. |
+| ![English Homepage](screenshots/homepage-en.png) | English | Bilingual support validation (Arabic/English), UI responsiveness check, LTR layout. |
+
