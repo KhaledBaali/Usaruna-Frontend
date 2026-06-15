@@ -11,6 +11,43 @@ An e-commerce marketplace connecting customers with family home-based businesses
 - **Bilingual** — full Arabic / English UI with RTL support
 - **Authentication** — login, register, forgot password, and reset password flows via Supabase Auth
 
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  React Frontend                     │
+│         (Vite · Tailwind · React Leaflet)           │
+└───────────────┬─────────────────┬───────────────────┘
+                │                 │
+                ▼                 ▼
+  ┌─────────────────────┐  ┌─────────────────────────┐
+  │  Node.js / Express  │  │   Python / FastAPI      │
+  │  (Usaruna Backend)  │  │   (AI Service)          │
+  │                     │  │                         │
+  │  · /verify-producer │  │  · /enhance             │
+  │  · /checkout        │  │  · /summarize           │
+  └────────┬────────────┘  │  · /smart-reply         │
+           │               └──────────┬──────────────┘
+           ▼                          │
+  ┌─────────────────────┐             │ Hugging Face API
+  │      Supabase       │             │ (Qwen2.5-7B)
+  │  (DB + Auth +       │◄────────────┘
+  │   Storage)          │
+  └─────────────────────┘
+```
+
+## AI Tools
+
+The AI service (`ai.py`) uses [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) via the Hugging Face API and exposes three endpoints called from `aiApi.js` in the frontend:
+
+| Endpoint | Function | Used in |
+|---|---|---|
+| `POST /enhance` | Rewrites a raw product description into professional marketing copy | Seller product form |
+| `POST /summarize` | Generates a one-sentence consensus summary from multiple customer reviews | Product details page |
+| `POST /smart-reply` | Drafts a contextual reply to a customer review using product info | Seller dashboard |
+
+All endpoints respond in the same language as the input (Arabic or English).
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -19,6 +56,7 @@ An e-commerce marketplace connecting customers with family home-based businesses
 | Build | Vite |
 | Maps | React Leaflet |
 | Database & Auth | Supabase |
+| AI | Hugging Face API · Qwen2.5-7B · FastAPI |
 | Testing | Vitest (unit), Playwright (e2e) |
 
 ## Getting Started
@@ -67,6 +105,23 @@ The app will be available at `http://localhost:5173`.
 | `npm test` | Run unit tests (Vitest) |
 | `npm run test:e2e` | Run end-to-end tests (Playwright) |
 
+## Deployment
+
+The frontend is a standard Vite SPA and can be deployed to any static hosting platform.
+
+**Vercel (recommended)**
+1. Import the repository at [vercel.com](https://vercel.com)
+2. Set the environment variables from `.env.local` in the Vercel dashboard
+3. Vercel auto-detects Vite — no extra configuration needed
+
+**Manual build**
+```bash
+npm run build   # outputs to dist/
+```
+Upload the `dist/` folder to any static host (Netlify, GitHub Pages, etc.).
+
+> Make sure `VITE_BACKEND_URL` and `VITE_AI_URL` point to your deployed backend URLs before building.
+
 ## Project Structure
 
 ```
@@ -92,3 +147,7 @@ src/
 ## Related
 
 - [Usaruna Backend](https://github.com/KhaledBaali/Usaruna-Backend) — Node.js/Express API + Python/FastAPI AI service
+
+## License
+
+MIT © [Khaled Baali](https://github.com/KhaledBaali)
